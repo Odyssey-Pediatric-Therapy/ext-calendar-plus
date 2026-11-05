@@ -1,0 +1,5 @@
+{
+    "timelineView": "more-timelines:views/calendar/timeline",
+    "calendarView": "more-timelines:views/calendar/calendar",
+    "controller": "more-timelines:controllers/calendar"
+}

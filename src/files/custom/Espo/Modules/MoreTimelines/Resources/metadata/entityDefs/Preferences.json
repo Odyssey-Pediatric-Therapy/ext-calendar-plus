@@ -1,0 +1,10 @@
+{
+    "fields": {
+        "moreTimelinesList": {
+            "type": "jsonArray"
+        },
+        "moreTimelinesSharedSelection": {
+            "type": "jsonObject"
+        }
+    }
+}

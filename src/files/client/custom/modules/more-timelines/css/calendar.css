@@ -1,0 +1,136 @@
+.more-timelines-header .mode-buttons {
+    display: flex;
+    flex-wrap: nowrap;
+    max-width: 100%;
+    white-space: nowrap;
+}
+
+.more-timelines-header .mode-buttons > .btn {
+    min-width: 0;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.more-timelines-header .mode-buttons > .btn-group,
+.more-timelines-header .mode-buttons > .btn-icon {
+    flex: 0 0 auto;
+}
+
+@media (min-width: 768px) {
+    .more-timelines-header {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        align-items: center;
+    }
+
+    .more-timelines-header::before,
+    .more-timelines-header::after {
+        display: none;
+    }
+
+    .more-timelines-header > [class*="col-"] {
+        float: none;
+        width: auto;
+        min-width: 0;
+    }
+}
+
+.more-timelines-header .mode-buttons > .mt-calendar-picker {
+    display: block;
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 320px;
+}
+
+.more-timelines-header .mt-calendar-picker > .dropdown-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-width: 0;
+}
+
+/* Override Bootstrap's more-specific nested button-group corner reset. */
+.more-timelines-header .mode-buttons.btn-group > .mt-calendar-picker.btn-group > .btn.dropdown-toggle {
+    border-top-right-radius: 4px;
+    border-bottom-right-radius: 4px;
+}
+
+.more-timelines-header .mt-calendar-picker-label {
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.more-timelines-header .mt-calendar-picker .caret {
+    flex: 0 0 auto;
+}
+
+.more-timelines-header .mt-calendar-picker .dropdown-menu {
+    min-width: min(220px, calc(100vw - 32px));
+    max-width: min(360px, calc(100vw - 32px));
+}
+
+.more-timelines-header .mt-calendar-picker .dropdown-menu a {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.mt-person-reassigning .mt-person-toggle {
+    border-style: dashed;
+}
+
+.mt-person-reassigning .mt-person-toggle.mt-person-reassignment-target {
+    opacity: 1 !important;
+    outline: 3px solid var(--brand-primary, #2563a6);
+    outline-offset: 2px;
+    background-color: var(--btn-primary-bg, #2563a6);
+    color: var(--btn-primary-color, #fff);
+}
+
+.more-timelines-header ~ .calendar .mt-event-gradient .fc-event-main,
+.more-timelines-day-columns .mt-event-gradient .fc-event-main {
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, .55);
+}
+
+.mt-calendar-event-tooltip {
+    position: fixed;
+    z-index: 1070;
+    width: 320px;
+    max-width: calc(100vw - 24px);
+    max-height: min(360px, 65vh);
+    overflow: auto;
+    padding: 12px 14px;
+    border: 1px solid var(--default-border-color, #d6dce1);
+    border-radius: 6px;
+    background: var(--popover-bg, var(--panel-bg, #fff));
+    color: var(--text-color, #333);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, .18);
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.mt-calendar-event-tooltip-title {
+    margin-bottom: 2px;
+    font-weight: 600;
+}
+
+.mt-calendar-event-tooltip dl {
+    margin: 10px 0 0;
+}
+
+.mt-calendar-event-tooltip dt {
+    font-size: .85em;
+    font-weight: 600;
+}
+
+.mt-calendar-event-tooltip dd {
+    margin: 0 0 8px;
+}
+
+.mt-calendar-event-tooltip dd:last-child {
+    margin-bottom: 0;
+}

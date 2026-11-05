@@ -1,0 +1,28 @@
+{
+    "labels": {
+        "Create Timeline": "Create Timeline",
+        "Edit Timeline": "Edit Timeline",
+        "Calendar users": "Calendar users",
+        "Hide person events": "Hide this person’s events",
+        "Show person events": "Show this person’s events",
+        "Show all people": "Show all",
+        "Hide all people": "Hide all",
+        "Create Calendar": "Create Calendar",
+        "Edit Calendar": "Edit Calendar",
+        "Calendar Type": "Type",
+        "Shared Timeline": "Shared Timeline",
+        "Personal Timeline": "Personal Timeline",
+        "Drop to reassign": "Drop to reassign",
+        "Attendees": "Attendees",
+        "Time Zone": "Time Zone"
+    },
+    "messages": {
+        "Select Timeline Members": "Enter a name and select at least one team or user.",
+        "Timeline Members Help": "Include everyone in selected teams, specific people, or both. Team membership updates when the timeline refreshes.",
+        "Could not load shared calendar": "Could not load the shared calendar. Try refreshing.",
+        "No calendar users": "No active users available for this calendar.",
+        "All calendar people hidden": "Everyone is hidden. Select a person above or choose Show all.",
+        "Select Calendar Members": "Enter a name, choose a calendar type, and select at least one team or person.",
+        "Could not reassign event": "Could not reassign this event. Check your permissions and try again."
+    }
+}
