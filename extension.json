@@ -1,7 +1,7 @@
 {
-    "module": "MoreTimelines",
-    "name": "More Timelines",
-    "description": "Add more timeline views to the calendar.",
+    "module": "CalendarPlus",
+    "name": "Calendar Plus",
+    "description": "Shared calendars, saved views, and team scheduling for EspoCRM.",
     "author": "Anthony Andriano",
     "bundled": true,
     "acceptableVersions": [

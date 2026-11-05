@@ -1,0 +1,18 @@
+[
+    {
+        "rows": [
+            [
+                {
+                    "name": "calendarPlusTooltipEnabled"
+                },
+                false
+            ],
+            [
+                {
+                    "name": "calendarPlusColorGradientEnabled"
+                },
+                false
+            ]
+        ]
+    }
+]

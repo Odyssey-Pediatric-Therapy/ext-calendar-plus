@@ -1,0 +1,9 @@
+{
+    "labels": {
+        "Extension Settings": "Extension Settings",
+        "Calendar Plus": "Calendar Plus"
+    },
+    "descriptions": {
+        "calendarPlusSettings": "Configure the Calendar Plus extension"
+    }
+}

@@ -1,0 +1,10 @@
+{
+    "fields": {
+        "calendarPlusList": {
+            "type": "jsonArray"
+        },
+        "calendarPlusSharedSelection": {
+            "type": "jsonObject"
+        }
+    }
+}

@@ -1,10 +1,12 @@
-# More Timelines
+# Calendar Plus
 
-An independent EspoCRM extension for named calendar timelines. Repository: `ext-more-timelines`. PHP module: `MoreTimelines`. Client module: `more-timelines`.
+An independent EspoCRM extension for shared calendars, saved views, and team scheduling. Repository: `ext-calendar-plus`. PHP module: `CalendarPlus`. Client module: `calendar-plus`.
 
 In Calendar, open the menu beside the view selectors on the right and choose Create Calendar. Choose Day, Week, Month, or Timeline, give it a name, and select teams, individual people, or both. Saved calendars appear in the same right-hand selector; its pencil edits the selected calendar’s name, type, and members, and its menu includes Remove. Teams expand to current active members on refresh, with duplicates removed. Saved calendars belong to the current user and respect existing calendar permissions. The Timeline option opens the shared timeline; additional timelines can be created as needed.
 
 There is no dependency on Odyssey. Existing saved calendars and timelines remain available without a bulk migration. See [calendar timeline details](docs/calendar-timelines.md).
+
+Admin → **Extension Settings → Calendar Plus** provides switches for hover tooltips and Month/Week color gradients, both enabled by default. Day and Timeline always use solid entity colors. Existing module identifiers and saved calendar preferences remain compatible.
 
 ## Development and packaging
 
@@ -140,9 +142,9 @@ Extensions will be installed automatically after running the command `node build
 You can block out new entity types right in Espo (using Entity Manager) and then copy generated custom files (`site/custom` dir) to the repository (`src` dir) using `copy-custom.js` script.
 
 1. Create entity types, fields, layouts, relationships in Espo (it should be available in `site` dir after building).
-2. Run `node copy-custom.js`. It will copy all files from `site/custom` to `src/files/custom/Espo/Modules/MoreTimelines` and apply needed modifications to files.
+2. Run `node copy-custom.js`. It will copy all files from `site/custom` to `src/files/custom/Espo/Modules/CalendarPlus` and apply needed modifications to files.
 3. Remove files from `site/custom`.
-4. Run `npm run sync`. It will copy files from the repository to Espo build (`site/custom//Espo/Modules/MoreTimelines` dir).
+4. Run `npm run sync`. It will copy files from the repository to Espo build (`site/custom//Espo/Modules/CalendarPlus` dir).
 5. Clear cache in Espo.
 6. Test in Espo.
 7. Commit changes.
@@ -153,9 +155,9 @@ You can remove `copy-custom.js` from the repository if you don't plan to use it 
 
 If your extension requires additional libraries, they can be installed by Composer:
 
-1. Create a file `src/files/custom/Espo/Modules/MoreTimelines/composer.json` with your dependencies. You can change dir to this directory and add composer dependencies using *composer require*.
+1. Create a file `src/files/custom/Espo/Modules/CalendarPlus/composer.json` with your dependencies. You can change dir to this directory and add composer dependencies using *composer require*.
 2. Once you run `npm run all` or `npm run composer-install`, composer dependencies will be automatically installed.
-3. Create a file `src/files/custom/Espo/Modules/MoreTimelines/Resources/autoload.json`.
+3. Create a file `src/files/custom/Espo/Modules/CalendarPlus/Resources/autoload.json`.
 
 
 The `autoload.json` file defines paths for namespaces:
@@ -163,7 +165,7 @@ The `autoload.json` file defines paths for namespaces:
 ```json
 {
     "psr-4": {
-        "LibraryNamespace\\": "custom/Espo/Modules/MoreTimelines/vendor/<vendor-name>/<library-name>/path/to/src"
+        "LibraryNamespace\\": "custom/Espo/Modules/CalendarPlus/vendor/<vendor-name>/<library-name>/path/to/src"
     }
 }
 ```
@@ -176,7 +178,7 @@ For static analysis, add to `phpstan.neon`:
     excludePaths:
         - src/files/custom/Espo/Modules/*/vendor
     scanDirectories:
-        - site/custom/Espo/Modules/MoreTimelines/vendor
+        - site/custom/Espo/Modules/CalendarPlus/vendor
 ```
 
 Note: The extension build will contain only the `vendor` directory without the `composer.json` file.
@@ -224,7 +226,7 @@ vendor/bin/phpunit
 or with a path:
 
 ```
-vendor/bin/phpunit tests/unit/Espo/Modules/MoreTimelines
+vendor/bin/phpunit tests/unit/Espo/Modules/CalendarPlus
 ```
 
 or:
@@ -233,7 +235,7 @@ or:
 npm run unit-tests
 ```
 
-Unit tests should be placed in `tests/unit/Espo/Modules/MoreTimelines` directory and be in `tests\unit\Espo\Modules\MoreTimelines`
+Unit tests should be placed in `tests/unit/Espo/Modules/CalendarPlus` directory and be in `tests\unit\Espo\Modules\CalendarPlus`
 namespace.
 
 ### Static analysis
@@ -287,7 +289,7 @@ You need to build a test instance first:
 Command to run integration tests:
 
 ```
-(npm run sync; cd site; vendor/bin/phpunit tests/integration/Espo/Modules/MoreTimelines)
+(npm run sync; cd site; vendor/bin/phpunit tests/integration/Espo/Modules/CalendarPlus)
 ```
 
 or:
@@ -298,8 +300,8 @@ npm run integration-tests
 
 Note that integration tests needs the full Espo installation.
 
-Integration tests should be placed in `tests/integration/Espo/Modules/MoreTimelines` directory
-and be in `tests\integration\Espo\Modules\MoreTimelines` namespace.
+Integration tests should be placed in `tests/integration/Espo/Modules/CalendarPlus` directory
+and be in `tests\integration\Espo\Modules\CalendarPlus` namespace.
 
 ### GitHub workflow
 
@@ -314,8 +316,8 @@ You need to set the following paths to be ignored in your IDE:
 * `site/build`
 * `site/custom/`
 * `site/client/custom/`
-* `site/tests/unit/Espo/Modules/MoreTimelines`
-* `site/tests/integration/Espo/Modules/MoreTimelines`
+* `site/tests/unit/Espo/Modules/CalendarPlus`
+* `site/tests/integration/Espo/Modules/CalendarPlus`
 
 ### File watcher
 
@@ -343,12 +345,12 @@ In `extension.json`, add a command that will bundle the needed library into an A
 }
 ```
 
-Add the library module path to `src/files/custom/Espo/Modules/MoreTimelines/Resources/metadata/app/jsLibs.json`
+Add the library module path to `src/files/custom/Espo/Modules/CalendarPlus/Resources/metadata/app/jsLibs.json`
 
 ```json
 {
     "some-lib": {
-        "path": "client/custom/modules/more-timelines/lib/some-lib.js"
+        "path": "client/custom/modules/calendar-plus/lib/some-lib.js"
     }
 }
 ```

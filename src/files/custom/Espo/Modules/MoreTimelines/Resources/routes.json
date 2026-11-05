@@ -1,7 +1,0 @@
-[
-    {
-        "route": "/MoreTimelines/Users",
-        "method": "post",
-        "actionClassName": "Espo\\Modules\\MoreTimelines\\Api\\Calendar\\TimelineUsers"
-    }
-]

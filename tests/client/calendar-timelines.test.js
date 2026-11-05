@@ -3,12 +3,12 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import {test} from 'node:test';
 
-const root = new URL('../../src/files/client/custom/modules/more-timelines/src/views/calendar/', import.meta.url);
-function load(file, dependencies, espo) {
+const root = new URL('../../src/files/client/custom/modules/calendar-plus/src/views/calendar/', import.meta.url);
+function load(file, dependencies, espo, globals = {}) {
   let result;
   vm.runInNewContext(readFileSync(new URL(file, root), 'utf8'), {
     define: (name, names, factory) => { result = factory(...names.map(name => dependencies[name])); },
-    Espo: espo, document: {},
+    Espo: espo, document: {}, setTimeout, clearTimeout, ...globals,
   });
   return result;
 }
@@ -23,6 +23,7 @@ class BaseTimeline {
   actionShowSharedCalendarOptions() { this.sharedOptionsOpened = true; }
   initGroupsDataSet() { this.groupsDataSet = this.userList; }
   fillColor(event) { event.style = 'background-color:#70c173;'; }
+  convertEvent(record) { return {...record}; }
   fetchEvents(from, to, callback) { this.baseFetches++; callback(['event']); }
   addHandler() {}
   on() {}
@@ -30,20 +31,25 @@ class BaseTimeline {
 function fixture(list = []) {
   const espo = {Ajax: {postRequest: async () => ({users: []})}, Ui: {notify() {}}, Utils: {clone: structuredClone, cloneDeep: structuredClone}};
   const definitions = load('../../calendar-definitions.js', {}, espo);
-  const colors = load('../../calendar-colors.js', {}, espo);
-  const Timeline = load('timeline.js', {'crm:views/calendar/timeline': BaseTimeline, 'more-timelines:calendar-definitions': definitions, 'more-timelines:calendar-colors': colors}, espo);
+  const EventTooltip = load('event-tooltip.js', {}, espo);
+  const Timeline = load('timeline.js', {'crm:views/calendar/timeline': BaseTimeline, 'calendar-plus:calendar-definitions': definitions, 'calendar-plus:views/calendar/event-tooltip': EventTooltip}, espo);
   const view = new Timeline();
+  view.eventTooltip = new EventTooltip(view);
+  view.eventAppearances = new Map();
+  view.tooltipEvents = new Map();
   view.allowed = true;
+  const config = {};
+  view.getConfig = () => ({get: name => config[name]});
   const storage = {};
   view.getStorage = () => ({get: (category, key) => storage[key], set: (category, key, value) => { storage[key] = value; }});
-  const preferences = {moreTimelinesList: list};
+  const preferences = {calendarPlusList: list};
   view.getPreferences = () => ({get: key => preferences[key]});
   view.getUser = () => ({id: 'me', get: () => 'Me'});
   view.getParentView = () => ({openCalendarEditor: item => { view.editedCalendar = item; }});
   view.getAcl = () => ({getPermissionLevel: () => view.allowed ? 'all' : 'no'});
   view.removed = false;
   view.leftMargin = 1; view.rightMargin = 1;
-  return {view, espo, preferences};
+  return {view, espo, preferences, config};
 }
 const date = {clone() { return this; }, subtract() { return this; }, add() { return this; }};
 
@@ -72,7 +78,7 @@ test('team and individual IDs resolve before events are fetched', async () => {
   const {view, espo} = fixture([{id: 'a', name: 'A', teamIdList: ['team'], userIdList: ['person']}]);
   view.calendarType = 'saved-a';
   espo.Ajax.postRequest = async (url, body) => {
-    assert.equal(url, 'MoreTimelines/Users');
+    assert.equal(url, 'CalendarPlus/Users');
     assert.deepEqual(plain(body), {teamIdList: ['team'], userIdList: ['person']});
     return {users: [{id: 'person', name: 'Person'}]};
   };
@@ -113,15 +119,15 @@ function modalFixture() {
   class Modal {}
   const espo = {Utils: {clone: structuredClone, cloneDeep: structuredClone}};
   const definitions = load('../../calendar-definitions.js', {}, espo);
-  const CalendarModal = load('modals/calendar.js', {'views/modal': Modal, 'more-timelines:calendar-definitions': definitions}, espo);
-  const TimelineModal = load('modals/timeline.js', {'more-timelines:views/calendar/modals/calendar': CalendarModal}, espo);
+  const CalendarModal = load('modals/calendar.js', {'views/modal': Modal, 'calendar-plus:calendar-definitions': definitions}, espo);
+  const TimelineModal = load('modals/timeline.js', {'calendar-plus:views/calendar/modals/calendar': CalendarModal}, espo);
   const modal = new TimelineModal();
   const state = {list: [{id: 'a', name: 'Original'}], fail: false};
   modal.options = {calendar: {...state.list[0], source: 'timeline', mode: 'timeline'}, onSave: item => { state.saved = item; }};
   modal.getPreferences = () => ({
-    get: key => key === 'moreTimelinesList' ? state.list : [],
+    get: key => key === 'calendarPlusList' ? state.list : [],
     set: (key, value) => { state.list = value; },
-    save: async data => { state.list = data.moreTimelinesList; if (state.fail) throw new Error('Failed'); },
+    save: async data => { state.list = data.calendarPlusList; if (state.fail) throw new Error('Failed'); },
   });
   modal.disableButton = () => {};
   modal.enableButton = () => {};
@@ -184,13 +190,13 @@ test('default Timeline preserves legacy user selections without writing or chang
   };
   await view.fetchEvents(date, date, () => {});
   assert.deepEqual(plain(view.userList), legacy);
-  assert.equal(preferences.moreTimelinesSharedSelection, undefined);
-  assert.equal(preferences.moreTimelinesList.length, 1);
+  assert.equal(preferences.calendarPlusSharedSelection, undefined);
+  assert.equal(preferences.calendarPlusList.length, 1);
 });
 
 test('default Timeline resolves teams and people on every refresh, including empty teams', async () => {
   const {view, espo, preferences} = fixture();
-  preferences.moreTimelinesSharedSelection = {teamIdList: ['team'], userIdList: ['ann']};
+  preferences.calendarPlusSharedSelection = {teamIdList: ['team'], userIdList: ['ann']};
   view.setup();
   let count = 0;
   espo.Ajax.postRequest = async (url, body) => {
@@ -207,16 +213,60 @@ test('default Timeline resolves teams and people on every refresh, including emp
   assert.deepEqual(plain(view.userList), []);
 });
 
-test('timeline labels use the same person color registry and configured entity gradient', () => {
-  const {view} = fixture();
-  view.userList = [{id: 'ann', name: 'Ann'}];
-  view.colors = {Task: '#70c173'};
-  const event = {scope: 'Task', group: 'ann', type: 'box'};
-  view.fillColor(event);
-  const person = view.getStorage().get('moreTimelines', 'userColors').ann;
-  assert.equal(event.style.includes(`${person} 0%`), true);
-  assert.equal(event.style.includes('#70c173 100%'), true);
-  const background = {scope: 'Task', group: 'ann', type: 'background'};
-  view.fillColor(background);
-  assert.equal(background.style.includes('linear-gradient'), false);
+test('Timeline labels always use solid entity colors and omit the native title popup', () => {
+  const {view, config} = fixture();
+  for (const enabled of [true, false]) {
+    config.calendarPlusColorGradientEnabled = enabled;
+    const event = {scope: 'Task', group: 'ann', type: 'box'};
+    view.fillColor(event);
+    assert.equal(event.style, 'background-color:#70c173;');
+    assert.equal(event.style.includes('linear-gradient'), false);
+  }
+  assert.equal(view.convertEvent({title: 'Task title'}).title, undefined);
+  config.calendarPlusTooltipEnabled = false;
+  assert.equal(view.convertEvent({title: 'Task title'}).title, undefined);
+});
+
+
+test('all Timeline types attach the common tooltip to events, skip backgrounds, and clean up removed items', async () => {
+  for (const type of ['single', 'shared', 'saved-a']) {
+    const {view, config} = fixture([{id: 'a', name: 'Team'}]);
+    view.storedType = type;
+    view.setup();
+    const event = view.convertEvent({id: 'task', name: 'Follow up', scope: 'Task', group: 'ann',
+      dateStart: '2026-11-05 09:00:00', dateEnd: '2026-11-05 10:00:00'});
+    const background = view.convertEvent({id: 'busy', type: 'background', scope: 'Task'});
+    const element = id => ({
+      attrs: {'data-id': id}, listeners: {},
+      getAttribute(name) { return this.attrs[name]; }, hasAttribute(name) { return name in this.attrs; },
+      setAttribute(name, value) { this.attrs[name] = value; },
+      addEventListener(name, fn) { this.listeners[name] = fn; },
+      removeEventListener(name) { delete this.listeners[name]; },
+    });
+    const task = element(event.id);
+    const busy = element(background.id);
+    let elements = [task, busy];
+    view.$timeline = {get: () => ({querySelectorAll: () => elements})};
+    view.syncTimelineTooltips();
+    assert.equal(task.attrs.tabindex, '0');
+    assert.equal(typeof task.listeners.mouseenter, 'function');
+    assert.equal(typeof task.listeners.focus, 'function');
+    assert.equal(view.eventTooltip.bindings.has(busy), false);
+    const adapted = view.eventAppearances.get(task).event;
+    assert.equal(adapted.extendedProps.recordId, 'task');
+    assert.equal(adapted.title, 'Follow up');
+    view.getDateTime = () => ({toDisplay: value => value, toDisplayDate: value => value});
+    view.translate = name => name;
+    const summary = view.eventTooltip.detailsFor(adapted, {usersNames: {bob: 'Bob'}});
+    assert.equal(summary.rows.find(row => row.label === 'users').value, 'Bob');
+    config.calendarPlusTooltipEnabled = false;
+    let reads = 0;
+    view.getModelFactory = () => { reads++; throw new Error('Unexpected read'); };
+    await view.eventTooltip.show(task);
+    assert.equal(reads, 0);
+    elements = [];
+    view.syncTimelineTooltips();
+    assert.equal(view.eventTooltip.bindings.size, 0);
+    assert.equal(view.eventAppearances.size, 0);
+  }
 });

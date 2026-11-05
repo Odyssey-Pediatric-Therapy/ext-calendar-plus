@@ -1,11 +1,11 @@
 {
-  "name": "espocrm-ext-more-timelines",
+  "name": "espocrm-ext-calendar-plus",
   "version": "1.0.0",
-  "description": "Named calendar timelines with team and individual user selection for EspoCRM.",
+  "description": "Calendar Plus: shared calendars, saved views, and team scheduling for EspoCRM.",
   "scripts": {
     "sa": "php site/vendor/bin/phpstan analyse --configuration phpstan.neon",
     "unit-tests": "php site/vendor/bin/phpunit --configuration phpunit.xml",
-    "integration-tests": "node build --copy && node build --composer-install && cd site && php vendor/bin/phpunit tests/integration/Espo/Modules/MoreTimelines",
+    "integration-tests": "node build --copy && node build --composer-install && cd site && php vendor/bin/phpunit tests/integration/Espo/Modules/CalendarPlus",
     "copy": "node build --copy",
     "composer-install": "node build --composer-install",
     "sync": "node build --copy && node build --composer-install",

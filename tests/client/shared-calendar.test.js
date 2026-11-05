@@ -72,14 +72,14 @@ function fixture(savedMode = 'basicDay') {
     },
   }, Ui: {notifyWait() {}, notify() {}, error() {}}};
   let colors;
-  vm.runInNewContext(readFileSync(new URL('../../src/files/client/custom/modules/more-timelines/src/calendar-colors.js', import.meta.url), 'utf8'), {
+  vm.runInNewContext(readFileSync(new URL('../../src/files/client/custom/modules/calendar-plus/src/calendar-colors.js', import.meta.url), 'utf8'), {
     define: (name, dependencies, factory) => { colors = factory(); },
   });
   let EventTooltip;
-  vm.runInNewContext(readFileSync(new URL('../../src/files/client/custom/modules/more-timelines/src/views/calendar/event-tooltip.js', import.meta.url), 'utf8'), {
+  vm.runInNewContext(readFileSync(new URL('../../src/files/client/custom/modules/calendar-plus/src/views/calendar/event-tooltip.js', import.meta.url), 'utf8'), {
     define: (name, dependencies, factory) => { EventTooltip = factory(); }, document, setTimeout, clearTimeout,
   });
-  vm.runInNewContext(readFileSync(new URL('../../src/files/client/custom/modules/more-timelines/src/views/calendar/calendar.js', import.meta.url), 'utf8'), {
+  vm.runInNewContext(readFileSync(new URL('../../src/files/client/custom/modules/calendar-plus/src/views/calendar/calendar.js', import.meta.url), 'utf8'), {
     define: (name, dependencies, factory) => { View = factory(BaseCalendar, {Calendar: FakeCalendar}, colors, EventTooltip); },
     Espo: espo, document, queueMicrotask,
   });
@@ -92,6 +92,8 @@ function fixture(savedMode = 'basicDay') {
   view.extendedProps = [];
   view.enabledScopeList = ['Meeting'];
   view.translate = value => value;
+  const config = {};
+  view.getConfig = () => ({get: name => config[name]});
   view.getDateTime = () => ({toDisplay: value => value || '', toDisplayDate: value => value || '', getTimeZone: () => 'America/Denver'});
   const storage = {};
   view.getStorage = () => ({get: (category, key) => storage[key], set: (category, key, value) => { storage[key] = value; }});
@@ -102,10 +104,10 @@ function fixture(savedMode = 'basicDay') {
   view.calendar = {
     getDate: () => '2026-11-04',
     getOption: name => ['eventDrop', 'eventResize', 'select'].includes(name) ? async () => {} : undefined,
-    setOption() {}, updateSize() {}, batchRendering(fn) { fn(); }, getEvents: () => [],
+    setOption(name, value) { (this.options ||= {})[name] = value; }, updateSize() {}, batchRendering(fn) { fn(); }, getEvents: () => [],
     destroy() { this.destroyed = true; },
   };
-  return {view, calls, espo, document};
+  return {view, calls, espo, document, config};
 }
 
 test('existing saved shared day/week modes become timed layouts; month uses the shared member filters', () => {
@@ -264,13 +266,13 @@ test('hover and keyboard focus highlight one person and dim other events without
   view.registerEventElement({el: shared, event: {extendedProps: {calendarUserIds: ['ann', 'bob']}}});
   const button = view.legendButtons.get('ann').button;
   button.listeners.mouseenter();
-  assert.equal(ann.classes.has('mt-person-event-highlighted'), true);
-  assert.equal(shared.classes.has('mt-person-event-highlighted'), true);
-  assert.equal(bob.classes.has('mt-person-event-dimmed'), true);
+  assert.equal(ann.classes.has('cp-person-event-highlighted'), true);
+  assert.equal(shared.classes.has('cp-person-event-highlighted'), true);
+  assert.equal(bob.classes.has('cp-person-event-dimmed'), true);
   button.listeners.mouseleave();
   assert.equal(bob.classes.size, 0);
   button.listeners.focus();
-  assert.equal(bob.classes.has('mt-person-event-dimmed'), true);
+  assert.equal(bob.classes.has('cp-person-event-dimmed'), true);
   button.listeners.blur();
   assert.equal(ann.classes.size, 0);
   assert.equal(view.hiddenUserIds.size, 0);
@@ -286,7 +288,7 @@ test('hidden people stay filtered after refresh, and initials identify people wi
   assert.deepEqual(Array.from(result[0].visibleCalendarUserIds), ['bob']);
   view.sharedUsers = [{id: 'ann', name: 'Amelia Chen'}];
   assert.equal(view.colorSwatch('ann').textContent, 'AC');
-  assert.deepEqual(Array.from(view.getStorage().get('moreTimelines', view.personFilterKey())), ['ann']);
+  assert.deepEqual(Array.from(view.getStorage().get('calendarPlus', view.personFilterKey())), ['ann']);
 });
 
 test('editing and saving a shared Week view rebuilds the legend and keeps person filters', async () => {
@@ -439,14 +441,14 @@ test('week legend drop uses the pointer target and preserves the event time', as
   view.reassignEvent = async (...args) => { assigned = args; };
   view.startReassignmentDrag({event}, view.calendar);
   document.listeners.get('pointermove')({clientX: 150, clientY: 20});
-  assert.equal(button.classes.has('mt-person-reassignment-target'), true);
+  assert.equal(button.classes.has('cp-person-reassignment-target'), true);
   view.stopReassignmentDrag({event, jsEvent: {clientX: 150, clientY: 20}});
   await Promise.resolve();
   assert.equal(assigned[0], event);
   assert.equal(assigned[1], 'bob');
   assert.equal(assigned[2], undefined, 'legend drops never request a time change');
   assert.equal(document.listeners.size, 0);
-  assert.equal(button.classes.has('mt-person-reassignment-target'), false);
+  assert.equal(button.classes.has('cp-person-reassignment-target'), false);
 });
 
 test('permission failures and recipients outside the shared view never save assignment changes', async () => {
@@ -550,14 +552,14 @@ test('toggling a focused person off then on restores normal emphasis without cli
   const button = view.legendButtons.get('ann').button;
   button.listeners.mouseenter();
   button.listeners.focus();
-  assert.equal(bob.classes.has('mt-person-event-dimmed'), true);
+  assert.equal(bob.classes.has('cp-person-event-dimmed'), true);
   button.listeners.click();
   button.listeners.click();
   button.listeners.mouseleave();
   assert.equal(view.hiddenUserIds.has('ann'), false);
   assert.equal(view.focusedUserId, null);
-  assert.equal(ann.classes.has('mt-person-event-highlighted'), false);
-  assert.equal(bob.classes.has('mt-person-event-dimmed'), false);
+  assert.equal(ann.classes.has('cp-person-event-highlighted'), false);
+  assert.equal(bob.classes.has('cp-person-event-dimmed'), false);
   assert.equal(ann.style.backgroundImage.includes(view.colorForUser('ann')), true);
   assert.equal(bob.style.backgroundImage.includes(view.colorForUser('bob')), true);
 });
@@ -642,4 +644,76 @@ test('all-day tooltip dates retain inclusive dates and Task people are collabora
   assert.equal(summary.rows.some(row => row.label === 'Time Zone'), false);
   assert.equal(summary.rows.find(row => row.label === 'users').value, 'Bob');
   assert.equal(summary.rows.some(row => row.label === 'Attendees'), false);
+});
+
+test('admin tooltip setting prevents hover/focus details from opening or fetching records', async () => {
+  const {view, config} = fixture('basicWeek');
+  await view.fetchEvents('from', 'to', () => {});
+  config.calendarPlusTooltipEnabled = false;
+  let reads = 0;
+  view.getModelFactory = () => ({create: async () => { reads++; return {fetch: async () => {}, get: () => undefined}; }});
+  const element = new Element();
+  view.registerEventElement({el: element, event: tooltipEvent()});
+  view.eventTooltip.scheduleShow(element);
+  await view.eventTooltip.show(element);
+  assert.equal(view.eventTooltip.active == null, true);
+  assert.equal(view.eventTooltip.pendingAnchor, null);
+  assert.equal(reads, 0);
+  config.calendarPlusTooltipEnabled = true;
+  await view.eventTooltip.show(element);
+  assert.equal(reads, 1);
+  assert.equal(view.eventTooltip.active != null, true);
+  view.eventTooltip.hide();
+});
+
+test('admin gradient setting defaults on for Week/Month and disabling it uses solid entity colors', async () => {
+  for (const mode of ['basicWeek', 'month']) {
+    const {view, config} = fixture(mode);
+    await view.fetchEvents('from', 'to', () => {});
+    view.colors = {Meeting: '#558BBD'};
+    const element = new Element();
+    const event = {extendedProps: {scope: 'Meeting', calendarUserIds: ['ann']}};
+    view.registerEventElement({el: element, event});
+    assert.equal(element.style.backgroundImage.includes('linear-gradient'), true);
+    config.calendarPlusColorGradientEnabled = false;
+    view.refreshEventGradients();
+    assert.equal(element.style.backgroundImage, '');
+    assert.equal(element.style.backgroundColor, '#558BBD');
+    assert.equal(view.filteredEvent({scope: 'Meeting', calendarUserIds: ['ann']}).color, '#558BBD');
+    config.calendarPlusColorGradientEnabled = true;
+    view.refreshEventGradients();
+    assert.equal(element.style.backgroundImage.includes('linear-gradient'), true);
+  }
+});
+
+
+test('standard Month, Week, and Day calendars mount detailed tooltips and obey the global setting', async () => {
+  for (const mode of ['month', 'agendaWeek', 'agendaDay']) {
+    const {view, config} = fixture(mode);
+    view.isCustomView = false;
+    view.mode = mode;
+    let reads = 0;
+    view.getModelFactory = () => ({create: async () => ({
+      fetch: async () => { reads++; }, get: name => ({assignedUserName: 'Ann', usersNames: {bob: 'Bob'}})[name],
+    })});
+    view.eventTooltip.cache.set('stale', Promise.resolve(null));
+    await view.fetchEvents('from', 'to', () => {});
+    assert.equal(view.baseFetched, true);
+    assert.equal(view.eventTooltip.cache.size, 0);
+    const hooks = view.calendar.options;
+    const el = new Element();
+    hooks.eventDidMount({el, event: tooltipEvent()});
+    await view.eventTooltip.show(el);
+    assert.equal(reads, 1);
+    assert.equal(view.eventTooltip.active.panel.children[0].textContent, 'Planning <img src=x>');
+    hooks.eventDragStart();
+    assert.equal(view.eventTooltip.active, null);
+    config.calendarPlusTooltipEnabled = false;
+    await view.eventTooltip.show(el);
+    assert.equal(view.eventTooltip.active, null);
+    assert.equal(reads, 1);
+    hooks.eventWillUnmount({el});
+    assert.equal(view.eventTooltip.bindings.size, 0);
+    assert.equal(view.eventAppearances.size, 0);
+  }
 });

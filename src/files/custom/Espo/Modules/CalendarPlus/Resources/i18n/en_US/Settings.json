@@ -1,0 +1,10 @@
+{
+    "fields": {
+        "calendarPlusTooltipEnabled": "Enable tooltip on hover",
+        "calendarPlusColorGradientEnabled": "Enable color gradient in month and week mode"
+    },
+    "tooltips": {
+        "calendarPlusTooltipEnabled": "Show event details when hovering over or keyboard-focusing an event in any view, including Timeline.",
+        "calendarPlusColorGradientEnabled": "Blend the user color into the entity type color in shared Month and Week views. Day and Timeline use solid entity colors."
+    }
+}

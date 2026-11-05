@@ -7,7 +7,7 @@
         "host": "localhost",
         "port": null,
         "charset": "utf8mb4",
-        "dbname": "ext-more-timelines",
+        "dbname": "ext-calendar-plus",
         "user": "root",
         "password": "",
         "platform": "Mysql"
@@ -16,7 +16,7 @@
         "language": "en_US",
         "defaultOwner": "www-data",
         "defaultGroup": "www-data",
-        "siteUrl": "http://ext-more-timelines/",
+        "siteUrl": "http://ext-calendar-plus/",
         "adminUsername": "admin",
         "adminPassword": "1"
     }

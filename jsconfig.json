@@ -3,7 +3,7 @@
         "paths": {
             "*": ["site/client/src/*"],
             "modules/crm/*": ["site/client/modules/crm/src/*"],
-            "modules/more-timelines/*": ["src/files/client/custom/modules/more-timelines/src/*"]
+            "modules/calendar-plus/*": ["src/files/client/custom/modules/calendar-plus/src/*"]
         },
         "module": "ES6",
         "target": "ES2018"

@@ -3,7 +3,7 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import {test} from 'node:test';
 
-const root = new URL('../../src/files/client/custom/modules/more-timelines/src/', import.meta.url);
+const root = new URL('../../src/files/client/custom/modules/calendar-plus/src/', import.meta.url);
 function load(file, dependencies = {}, espo = {}) {
   let exported;
   vm.runInNewContext(readFileSync(new URL(file, root), 'utf8'), {
@@ -26,10 +26,10 @@ function fixture(item = null) {
     'views/modal': Modal, model: Model, 'views/record/edit-for-modal': Record,
     'views/fields/varchar': Field, 'views/fields/enum': Field,
     'crm:views/calendar/fields/users': Field, 'crm:views/calendar/fields/teams': Field,
-    'more-timelines:calendar-definitions': definitions,
+    'calendar-plus:calendar-definitions': definitions,
   }, espo);
   const state = {calendarViewDataList: [{id: 'grid', name: 'Team week', mode: 'basicWeek', teamIdList: ['team']}],
-    moreTimelinesList: [{id: 'legacy', name: 'Old timeline', userIdList: ['ann'], teamIdList: ['team']}], fail: false};
+    calendarPlusList: [{id: 'legacy', name: 'Old timeline', userIdList: ['ann'], teamIdList: ['team']}], fail: false};
   const editor = new Editor({calendar: item, onSave: saved => { state.saved = saved; }});
   editor.translate = value => value;
   editor.assignView = () => {};
@@ -62,7 +62,7 @@ test('creating every calendar type saves people and teams in the unified list', 
     assert.deepEqual(Array.from(saved.userIdList), ['bob']);
     assert.deepEqual(Array.from(saved.teamIdList), ['team']);
     assert.equal(state.saved.routeMode, `view-${saved.id}`);
-    assert.equal(state.moreTimelinesList.length, 1);
+    assert.equal(state.calendarPlusList.length, 1);
   }
 });
 
@@ -72,7 +72,7 @@ test('legacy timelines stay available and changing type preserves their ID and m
   editor.setup();
   editor.model.attributes.mode = 'agendaDay';
   await editor.actionSave();
-  assert.equal(state.moreTimelinesList.length, 0);
+  assert.equal(state.calendarPlusList.length, 0);
   const saved = state.calendarViewDataList.find(item => item.id === 'legacy');
   assert.deepEqual(Array.from(saved.userIdList), ['ann']);
   assert.deepEqual(Array.from(saved.teamIdList), ['team']);
@@ -86,7 +86,7 @@ test('editing an existing calendar preserves order; a failed conversion restores
   const failure = fixture({id: 'legacy', source: 'timeline'});
   failure.state.fail = true;
   await failure.editor.persist({id: 'legacy', name: 'Converted', mode: 'month', userIdList: ['ann']});
-  assert.equal(failure.state.moreTimelinesList.length, 1);
+  assert.equal(failure.state.calendarPlusList.length, 1);
   assert.equal(failure.state.calendarViewDataList.length, 1);
   assert.equal(failure.state.closed, undefined);
 });
@@ -98,7 +98,7 @@ test('the right selector keeps the shared Timeline and saved calendars without a
     data() { return {}; }
   }
   const Buttons = load('views/calendar/mode-buttons.js', {
-    'crm:views/calendar/mode-buttons': ModeButtons, 'more-timelines:calendar-definitions': definitions,
+    'crm:views/calendar/mode-buttons': ModeButtons, 'calendar-plus:calendar-definitions': definitions,
   });
   const buttons = new Buttons();
   buttons.isCustomViewAvailable = true;
@@ -122,8 +122,8 @@ test('saved timeline routes mount the timeline renderer and saving reopens even 
   class Page { setup() {} setupCalendar() { this.usedGrid = true; } }
   class Editor { constructor(options) { this.options = options; } async render() {} }
   const CalendarPage = load('views/calendar/calendar-page.js', {
-    'crm:views/calendar/calendar-page': Page, 'more-timelines:views/calendar/modals/calendar': Editor,
-    'more-timelines:calendar-definitions': definitions,
+    'crm:views/calendar/calendar-page': Page, 'calendar-plus:views/calendar/modals/calendar': Editor,
+    'calendar-plus:calendar-definitions': definitions,
   });
   const page = new CalendarPage();
   page.options = {mode: 'view-timeline-legacy'};
@@ -133,7 +133,7 @@ test('saved timeline routes mount the timeline renderer and saving reopens even 
   page.createView = (name, view, options) => { page.mounted = {view, options}; };
   page.setup();
   page.setupCalendar();
-  assert.equal(page.mounted.view, 'more-timelines:views/calendar/timeline');
+  assert.equal(page.mounted.view, 'calendar-plus:views/calendar/timeline');
   assert.equal(page.mounted.options.calendarType, 'saved-legacy');
   assert.equal(page.mounted.options.mode, 'view-timeline-legacy');
   page.assignView = async (name, view) => { page.editor = view; };
@@ -148,7 +148,7 @@ test('saved timeline routes mount the timeline renderer and saving reopens even 
 test('the built-in Timeline always opens shared even if an old named selection is stored', () => {
   class Page {}
   const CalendarPage = load('views/calendar/calendar-page.js', {
-    'crm:views/calendar/calendar-page': Page, 'more-timelines:calendar-definitions': definitions,
+    'crm:views/calendar/calendar-page': Page, 'calendar-plus:calendar-definitions': definitions,
   });
   const page = new CalendarPage();
   page.options = {};
@@ -179,31 +179,57 @@ test('default Timeline saves teams and people without creating a named calendar 
   editor.setup();
   Object.assign(editor.model.attributes, {teamsIds: ['team'], teamsNames: {team: 'Team'}});
   await editor.actionSave();
-  assert.deepEqual(Array.from(state.moreTimelinesSharedSelection.teamIdList), ['team']);
-  assert.deepEqual(Array.from(state.moreTimelinesSharedSelection.userIdList), ['bob']);
+  assert.deepEqual(Array.from(state.calendarPlusSharedSelection.teamIdList), ['team']);
+  assert.deepEqual(Array.from(state.calendarPlusSharedSelection.userIdList), ['bob']);
   assert.equal(state.calendarViewDataList.length, 1);
-  assert.equal(state.moreTimelinesList.length, 1);
+  assert.equal(state.calendarPlusList.length, 1);
   assert.deepEqual(state.sharedCalendarUserList, [{id: 'bob', name: 'Bob'}]);
   assert.equal(state.saved.routeMode, 'timeline');
 });
 
 test('failed default Timeline save restores its selection and leaves the editor open', async () => {
   const {editor, state} = fixture();
-  state.moreTimelinesSharedSelection = {teamIdList: ['old'], userIdList: ['bob']};
+  state.calendarPlusSharedSelection = {teamIdList: ['old'], userIdList: ['bob']};
   editor.options.calendar = definitions.sharedTimeline(editor.getPreferences(), {id: 'me', get: () => 'Me'});
   editor.setup();
   editor.model.attributes.teamsIds = ['new'];
   state.fail = true;
   await editor.actionSave();
-  assert.deepEqual(Array.from(state.moreTimelinesSharedSelection.teamIdList), ['old']);
+  assert.deepEqual(Array.from(state.calendarPlusSharedSelection.teamIdList), ['old']);
   assert.equal(state.closed, undefined);
 });
 
 test('editing default membership is isolated until Save', () => {
   const {editor, state} = fixture();
-  state.moreTimelinesSharedSelection = {teamIdList: ['old'], userIdList: ['bob']};
+  state.calendarPlusSharedSelection = {teamIdList: ['old'], userIdList: ['bob']};
   editor.options.calendar = definitions.sharedTimeline(editor.getPreferences(), {id: 'me', get: () => 'Me'});
   editor.setup();
   editor.model.attributes.teamsIds.push('new');
-  assert.deepEqual(state.moreTimelinesSharedSelection.teamIdList, ['old']);
+  assert.deepEqual(state.calendarPlusSharedSelection.teamIdList, ['old']);
+});
+
+test('Calendar Plus settings default on without overwriting saved false values', () => {
+  class Settings { setup() { this.parentInitialized = true; } }
+  const View = load('views/admin/settings.js', {'views/settings/record/edit': Settings});
+  const view = new View();
+  const values = {calendarPlusColorGradientEnabled: false};
+  view.model = {get: name => values[name], set: (name, value) => { values[name] = value; }};
+  view.setup();
+  assert.equal(values.calendarPlusTooltipEnabled, true);
+  assert.equal(values.calendarPlusColorGradientEnabled, false);
+  assert.equal(view.layoutName, 'calendarPlusSettings');
+  assert.equal(view.parentInitialized, true);
+});
+
+test('Admin uses the shared Extension Settings section with a Calendar Plus row and two enabled-by-default fields', () => {
+  const resources = new URL('../../src/files/custom/Espo/Modules/CalendarPlus/Resources/', import.meta.url);
+  const panel = JSON.parse(readFileSync(new URL('metadata/app/adminPanel.json', resources))).extensionSettings;
+  const item = panel.itemList.find(item => typeof item === 'object');
+  assert.equal(panel.label, 'Extension Settings');
+  assert.equal(item.label, 'Calendar Plus');
+  assert.equal(item.url, '#Admin/calendarPlusSettings');
+  const fields = JSON.parse(readFileSync(new URL('metadata/entityDefs/Settings.json', resources))).fields;
+  assert.equal(fields.calendarPlusTooltipEnabled.default, true);
+  assert.equal(fields.calendarPlusColorGradientEnabled.default, true);
+  assert.equal(fields.calendarPlusTooltipEnabled.onlyAdmin, undefined, 'runtime flags must be readable by regular calendar users');
 });

@@ -1,0 +1,14 @@
+{
+    "fields": {
+        "calendarPlusTooltipEnabled": {
+            "type": "bool",
+            "default": true,
+            "tooltip": true
+        },
+        "calendarPlusColorGradientEnabled": {
+            "type": "bool",
+            "default": true,
+            "tooltip": true
+        }
+    }
+}

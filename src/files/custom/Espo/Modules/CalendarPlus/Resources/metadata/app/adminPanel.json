@@ -1,0 +1,16 @@
+{
+    "extensionSettings": {
+        "label": "Extension Settings",
+        "order": 80,
+        "itemList": [
+            "__APPEND__",
+            {
+                "url": "#Admin/calendarPlusSettings",
+                "label": "Calendar Plus",
+                "iconClass": "fas fa-calendar-alt",
+                "description": "calendarPlusSettings",
+                "recordView": "calendar-plus:views/admin/settings"
+            }
+        ]
+    }
+}

@@ -1,12 +1,12 @@
 {
-    "name": "espocrm/ext-more-timelines",
+    "name": "espocrm/ext-calendar-plus",
     "require": {
         "php": ">=8.3"
     },
     "autoload-dev": {
         "psr-4": {
-            "Espo\\Modules\\MoreTimelines\\": "src/files/custom/Espo/Modules/MoreTimelines",
-            "tests\\unit\\Espo\\Modules\\MoreTimelines\\": "tests/unit/Espo/Modules/MoreTimelines"
+            "Espo\\Modules\\CalendarPlus\\": "src/files/custom/Espo/Modules/CalendarPlus",
+            "tests\\unit\\Espo\\Modules\\CalendarPlus\\": "tests/unit/Espo/Modules/CalendarPlus"
         }
     },
     "require-dev": {
