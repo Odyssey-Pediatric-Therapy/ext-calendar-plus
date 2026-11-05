@@ -1,14 +1,22 @@
-Features:
+# Calendar Plus features
+
 - See everyone’s schedule together. Combine teams and individual people in one shared calendar.
-- Choose the right perspective. Switch between Day, Week, Month, and Timeline.
-- Compare availability side by side. Shared Day gives each person an aligned column.
-- Reschedule and reassign visually. Drag events to change times or move responsibility between people in shared Day and Week.
-- Focus on the people who matter. Instantly show or hide individual schedules.
-- Spot someone’s events quickly. Hover over their legend entry to highlight their schedule.
-- Keep event cards clean. Hover for times, attendees, assignees, and other details.
-- Recognize people and activity types. Stable person colors, initials, and optional gradients provide visual cues.
-- Save calendars for different workflows. Keep dedicated views for departments, projects, or cross-team coordination.
-- Keep team calendars current. Membership refreshes automatically when calendars fetch events, excluding inactive users.
-- Preserve attendee relationships. Reassign responsibility without adding the previous owner as an attendee.
-- Respect existing CRM permissions. Calendar Plus uses EspoCRM’s access controls and standard event records.
-- Added 5, 10, 60, and 120-minute time slots
+- Choose the right perspective. Switch between Day, Week, Month, and Timeline from one calendar selector.
+- Create and edit every calendar type in one place. Save dedicated views for departments, projects, or cross-team coordination.
+- Compare availability side by side. Shared Day gives each person an aligned column with time slots and all-day events.
+- Reschedule and reassign visually. Drag between people’s Day columns to change responsibility and time, or drop onto a person’s Week legend entry to reassign without changing the time.
+- Preserve attendee relationships. Reassignment keeps existing attendees and does not add the previous owner as an attendee.
+- Focus on the people who matter. Instantly show or hide individual schedules, with visibility remembered per calendar in the browser.
+- Spot someone’s events quickly. Hover over or keyboard-focus their legend entry to highlight their schedule.
+- Recognize people and activity types. Stable person colors, initials, and optional Month/Week gradients provide visual cues. Day and Timeline use solid entity colors.
+- Keep event cards readable. Short events use a compact layout, with titles contained inside their cards instead of spilling into nearby time slots.
+- Preview details in every calendar. Modern hover and keyboard-focus tooltips show event type, times, timezone, assignee, status, location, and participants when available, including in Timeline.
+- See attendee responses at a glance. Attendee chips show ✓ for accepted, ✕ for declined, and ? for tentative or no answer. Hovering an indicator reveals the exact status.
+- Show meaningful task details. Task tooltips list actual collaborators when available, without a redundant calendar-user list.
+- Control tooltip timing. Set a system-wide delay, defaulting to 1 second, with fractional seconds or immediate display supported. Disabling tooltips hides the delay field while retaining its value.
+- Keep Timeline rows compact. Back-to-back event ranges share a row by default while genuine overlaps still stack. Configure horizontal spacing from 0 to 100 pixels; 10 restores the original gap.
+- Schedule in smaller increments. Choose 5-, 10-, 15-, or 30-minute slots, with subtle dotted lines between solid hour markers in Day and Week views.
+- Refresh from any view. A refresh control is available across calendar types.
+- Keep team calendars current. Membership resolves whenever calendars fetch events, including refreshes and date changes, with duplicates removed and inactive or deleted users excluded.
+- Manage extension options centrally. Admin → Extension Settings → Calendar Plus controls tooltips, tooltip delay, Month/Week gradients, and Timeline spacing.
+- Respect existing CRM permissions. Calendar Plus uses EspoCRM’s access controls and standard event records, and retains existing saved calendar definitions.
