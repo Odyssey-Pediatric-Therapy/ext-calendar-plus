@@ -1,0 +1,16 @@
+{
+    "name": "espocrm/ext-more-timelines",
+    "require": {
+        "php": ">=8.3"
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Espo\\Modules\\MoreTimelines\\": "src/files/custom/Espo/Modules/MoreTimelines",
+            "tests\\unit\\Espo\\Modules\\MoreTimelines\\": "tests/unit/Espo/Modules/MoreTimelines"
+        }
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^12.5",
+        "phpstan/phpstan": "^2.1"
+    }
+}

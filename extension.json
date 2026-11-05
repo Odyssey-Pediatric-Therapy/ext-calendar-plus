@@ -1,0 +1,14 @@
+{
+    "module": "MoreTimelines",
+    "name": "More Timelines",
+    "description": "Add more timeline views to the calendar.",
+    "author": "Anthony Andriano",
+    "bundled": true,
+    "acceptableVersions": [
+        ">=9.3.0"
+    ],
+    "php": [
+        ">=8.3"
+    ],
+    "scripts": []
+}

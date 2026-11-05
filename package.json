@@ -1,0 +1,30 @@
+{
+  "name": "espocrm-ext-more-timelines",
+  "version": "1.0.0",
+  "description": "Named calendar timelines with team and individual user selection for EspoCRM.",
+  "scripts": {
+    "sa": "php site/vendor/bin/phpstan analyse --configuration phpstan.neon",
+    "unit-tests": "php site/vendor/bin/phpunit --configuration phpunit.xml",
+    "integration-tests": "node build --copy && node build --composer-install && cd site && php vendor/bin/phpunit tests/integration/Espo/Modules/MoreTimelines",
+    "copy": "node build --copy",
+    "composer-install": "node build --composer-install",
+    "sync": "node build --copy && node build --composer-install",
+    "extension": "node build --extension",
+    "clear-cache": "php site/clear_cache.php",
+    "rebuild": "node build --rebuild",
+    "all": "node build --all",
+    "prepare-test": "node build --prepare-test",
+    "test:client": "node --test tests/client/*.test.js",
+    "test": "npm run test:client && npm run unit-tests"
+  },
+  "type": "module",
+  "author": "Anthony Andriano",
+  "dependencies": {
+    "espo-extension-tools": "github:espocrm/extension-tools#0.4.5",
+    "fs-extra": "^9.0.0"
+  },
+  "engines": {
+    "npm": ">=8",
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,383 @@
+# More Timelines
+
+An independent EspoCRM extension for named calendar timelines. Repository: `ext-more-timelines`. PHP module: `MoreTimelines`. Client module: `more-timelines`.
+
+In Calendar, open the menu beside the view selectors on the right and choose Create Calendar. Choose Day, Week, Month, or Timeline, give it a name, and select teams, individual people, or both. Saved calendars appear in the same right-hand selector; its pencil edits the selected calendar’s name, type, and members, and its menu includes Remove. Teams expand to current active members on refresh, with duplicates removed. Saved calendars belong to the current user and respect existing calendar permissions. The Timeline option opens the shared timeline; additional timelines can be created as needed.
+
+There is no dependency on Odyssey. Existing saved calendars and timelines remain available without a bulk migration. See [calendar timeline details](docs/calendar-timelines.md).
+
+## Development and packaging
+
+- `npm test` runs the client tests and PHP unit tests using the local EspoCRM site.
+- `npm run copy` copies the extension source into the local site.
+- `npm run rebuild` rebuilds local application metadata.
+- `npm run extension` builds the installable extension ZIP.
+
+## Configuration
+
+Create `config.json` file in the root directory, or copy `config-default.json`:
+
+```
+cp config-default.json config.json
+```
+
+When extension tools read config parameters, `config-default.json` is used as the fallback source. You can override default parameters in the `config.json` file.
+
+Parameters:
+
+* espocrm.repository – from what repository to fetch EspoCRM;
+* espocrm.branch – what branch to fetch (`stable` is set by default); you can specify version number instead (e.g. `10.0.0`);
+* database - credentials of the dev database;
+* install.siteUrl – site url of the dev instance;
+* install.defaultOwner – a webserver owner (important to be set right);
+* install.defaultGroup – a webserver group (important to be set right).
+
+
+## Config for EspoCRM instance
+
+You can override EspoCRM config. Create `config.php` in the root directory of the repository. This file will be applied after EspoCRM installation (when building).
+
+Example:
+
+```php
+<?php
+return [
+    'useCacheInDeveloperMode' => true,
+];
+```
+
+## Building
+
+After building, EspoCRM instance with installed extension will be available at `site` directory. You will be able to access it with credentials:
+
+* Username: admin
+* Password: 1
+
+### Preparation
+
+1. You need to have *node*, *npm*, *composer* installed.
+2. Run `npm install` (or `npm ci` if you are not building the extension from scratch).
+3. Create a database. Note that without the created database instance building will fail. The database name is set in the `config.json` file. You can change it.
+
+### Full EspoCRM instance building
+
+It will download EspoCRM (from the repository specified in the config), then build and install it (in the `site` directory). Then, it will install the extension in the instance.
+
+Command:
+
+```
+npm run all
+```
+
+Note: If an error occurred, check `site/data/logs/` for details. It's often a database is not created.
+
+The command removes the previously installed EspoCRM instance, but keep the database intact. Use this command to update the dev instance to the latest version or to any specific version (*espocrm.branch* parameter in the config).
+
+After the instance is ready, if your webserver is run under another user, you might need to fix file [ownership](https://docs.espocrm.com/administration/server-configuration/#ownership) (in the `site` directory).
+
+### Copying extension files to EspoCRM instance
+
+You need to run this command every time you make changes in `src` directory, and you want to try these changes on Espo instance.
+
+Command:
+
+```
+npm run sync
+```
+
+To avoid running this command manually, use a file watcher in your IDE. The configuration for PhpStorm is included in this repository and enabled by default (no need any extra configuration). See below about the file watcher.
+
+### Running after-install script
+
+AfterInstall.php will be applied for EspoCRM instance.
+
+Command:
+
+```
+node build --after-install
+```
+
+### Extension package building
+
+Command:
+
+```
+npm run extension
+```
+
+The package will be created in `build` directory.
+
+Note: The version number is taken from `package.json`.
+
+### Installing addition extensions
+
+If your extension requires other extensions, there is a way to install them automatically while building the instance.
+
+Necessary steps:
+
+1. Add the current EspoCRM version to the `config.php`:
+
+    ```php
+    <?php
+    return [
+        'version' => '9.3.0',
+    ];
+    ```
+
+2. Create the `extensions` directory in the root directory of your repository.
+3. Put needed extensions (e.g. `my-extension-1.0.0.zip`) in this directory.
+
+Extensions will be installed automatically after running the command `node build --all` or `node build --install`.
+
+## Development workflow
+
+1. Do development in `src` dir.
+2. Run `npm run sync`.
+3. Test changes in EspoCRM instance at `site` dir.
+
+## Using entity manager to create entities
+
+You can block out new entity types right in Espo (using Entity Manager) and then copy generated custom files (`site/custom` dir) to the repository (`src` dir) using `copy-custom.js` script.
+
+1. Create entity types, fields, layouts, relationships in Espo (it should be available in `site` dir after building).
+2. Run `node copy-custom.js`. It will copy all files from `site/custom` to `src/files/custom/Espo/Modules/MoreTimelines` and apply needed modifications to files.
+3. Remove files from `site/custom`.
+4. Run `npm run sync`. It will copy files from the repository to Espo build (`site/custom//Espo/Modules/MoreTimelines` dir).
+5. Clear cache in Espo.
+6. Test in Espo.
+7. Commit changes.
+
+You can remove `copy-custom.js` from the repository if you don't plan to use it future.
+
+## Using composer in extension
+
+If your extension requires additional libraries, they can be installed by Composer:
+
+1. Create a file `src/files/custom/Espo/Modules/MoreTimelines/composer.json` with your dependencies. You can change dir to this directory and add composer dependencies using *composer require*.
+2. Once you run `npm run all` or `npm run composer-install`, composer dependencies will be automatically installed.
+3. Create a file `src/files/custom/Espo/Modules/MoreTimelines/Resources/autoload.json`.
+
+
+The `autoload.json` file defines paths for namespaces:
+
+```json
+{
+    "psr-4": {
+        "LibraryNamespace\\": "custom/Espo/Modules/MoreTimelines/vendor/<vendor-name>/<library-name>/path/to/src"
+    }
+}
+```
+
+This definition is needed because in EspoCRM extensions are not installed via Composer, they are included in runtime.
+
+For static analysis, add to `phpstan.neon`:
+
+```
+    excludePaths:
+        - src/files/custom/Espo/Modules/*/vendor
+    scanDirectories:
+        - site/custom/Espo/Modules/MoreTimelines/vendor
+```
+
+Note: The extension build will contain only the `vendor` directory without the `composer.json` file.
+
+Note: You need to git commit both `composer.json` and `composer.lock` files.
+
+## Versioning
+
+The version number is stored in `package.json` and `package-lock.json`.
+
+Bumping version:
+
+```
+npm version patch
+npm version minor
+npm version major
+```
+
+## Tests
+
+To prepare an Espo instance for tests, run:
+
+```
+npm run prepare-test
+```
+
+It downloads the Espo package, unzips it in the *site* directory, and then runs composer install. To be used for unit tests and static analysis in CI environment as it takes less time than the full installation (with database).
+
+### Unit tests
+
+You need to install composer dev dependencies in the root first:
+
+```
+composer install
+```
+
+This root composer serves only for unit tests static analysis.
+
+Command to run unit tests:
+
+```
+vendor/bin/phpunit
+```
+
+or with a path:
+
+```
+vendor/bin/phpunit tests/unit/Espo/Modules/MoreTimelines
+```
+
+or:
+
+```
+npm run unit-tests
+```
+
+Unit tests should be placed in `tests/unit/Espo/Modules/MoreTimelines` directory and be in `tests\unit\Espo\Modules\MoreTimelines`
+namespace.
+
+### Static analysis
+
+You need to install composer dev dependencies in the root first:
+
+```
+composer install
+```
+
+Command to run static analysis:
+
+```
+vendor/bin/phpstan
+```
+
+or:
+
+```
+npm run sa
+```
+
+PHPStan scans sources in the *src* and *site* directories as it's configured in *phpstan.neon*.
+
+### Integration tests
+
+Integrations tests are run from the *site* directory.
+
+You need to build a test instance first:
+
+1. `npm run sync`
+2. `(cd site; grunt test)`
+
+    You need to create a config file `tests/integration/config.php`:
+
+    ```php
+    <?php
+
+    return [
+        'database' => [
+            'driver' => 'pdo_mysql',
+            'host' => 'localhost',
+            'charset' => 'utf8mb4',
+            'dbname' => 'TEST_DB_NAME',
+            'user' => 'YOUR_DB_USER',
+            'password' => 'YOUR_DB_PASSWORD',
+        ],
+    ];
+    ```
+
+Command to run integration tests:
+
+```
+(npm run sync; cd site; vendor/bin/phpunit tests/integration/Espo/Modules/MoreTimelines)
+```
+
+or:
+
+```
+npm run integration-tests
+```
+
+Note that integration tests needs the full Espo installation.
+
+Integration tests should be placed in `tests/integration/Espo/Modules/MoreTimelines` directory
+and be in `tests\integration\Espo\Modules\MoreTimelines` namespace.
+
+### GitHub workflow
+
+A workflow running unit tests and static analysis is defined in `.github/workflows/test.yml.disabled`.
+Remove `.disabled` from the filename to activate the workflow.
+
+## Configuring IDE
+
+You need to set the following paths to be ignored in your IDE:
+
+* `build`
+* `site/build`
+* `site/custom/`
+* `site/client/custom/`
+* `site/tests/unit/Espo/Modules/MoreTimelines`
+* `site/tests/integration/Espo/Modules/MoreTimelines`
+
+### File watcher
+
+Note: The File Watcher configuration for PhpStorm is included in this repository (no need to configure).
+
+You can set up a file watcher in the IDE to automatically copy and transpile files upon saving.
+
+File watcher parameters for PhpStorm:
+
+* Program: `node`
+* Arguments: `build --copy-file --file=$FilePathRelativeToProjectRoot$`
+* Working Directory: `$ProjectFileDir$`
+
+## JavaScript frontend libraries
+
+Install *rollup*.
+
+In `extension.json`, add a command that will bundle the needed library into an AMD module. Example:
+
+```json
+{
+    "scripts": [
+        "npx rollup node_modules/some-lib/build/esm/index.mjs --format amd --file build/assets/lib/some-lib.js --amd.id some-lib"
+    ]
+}
+```
+
+Add the library module path to `src/files/custom/Espo/Modules/MoreTimelines/Resources/metadata/app/jsLibs.json`
+
+```json
+{
+    "some-lib": {
+        "path": "client/custom/modules/more-timelines/lib/some-lib.js"
+    }
+}
+```
+
+When you build, the library module will be automatically included in the needed location.
+
+Note that you may also need to create *rollup.config.js* to set some additional Rollup parameters that are not supported via CLI usage.
+
+## Updating tooling libraries
+
+Update the version number of espo-extension-tools in package.json to the [latest one](https://github.com/espocrm/extension-tools/releases).
+
+Run:
+
+```
+npm update espo-extension-tools
+npm update espo-frontend-build-tools
+```
+
+Or just update everything:
+
+```
+npm update
+```
+
+## License
+
+(change this section after initialization)
+
+Change the license in `LICENSE` file.
+
+Shared Day calendars show one timed column per person. Shared Week calendars combine events in a time grid with person colors and a legend. Both support standard event dragging and resizing.

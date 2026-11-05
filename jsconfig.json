@@ -1,0 +1,11 @@
+{
+    "compilerOptions": {
+        "paths": {
+            "*": ["site/client/src/*"],
+            "modules/crm/*": ["site/client/modules/crm/src/*"],
+            "modules/more-timelines/*": ["src/files/client/custom/modules/more-timelines/src/*"]
+        },
+        "module": "ES6",
+        "target": "ES2018"
+    }
+}
