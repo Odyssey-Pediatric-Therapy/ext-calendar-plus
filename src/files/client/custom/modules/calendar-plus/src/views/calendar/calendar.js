@@ -40,6 +40,17 @@ define('calendar-plus:views/calendar/calendar', [
       });
     }
 
+    afterRender() {
+      // Core concatenates minutes into HH:mm:ss; FullCalendar requires two minute digits.
+      const minutes = this.slotDuration;
+      this.slotDuration = String(minutes).padStart(2, '0');
+      try {
+        return super.afterRender();
+      } finally {
+        this.slotDuration = minutes;
+      }
+    }
+
     prepareRender() {
       // Saving a shared view re-renders this instance after replacing its DOM.
       this.resetCalendarRendering();
@@ -189,16 +200,20 @@ define('calendar-plus:views/calendar/calendar', [
 
     sharedEventContent(info) {
       const frame = document.createElement('div');
+      frame.className = 'fc-event-main-frame cp-calendar-event-content';
       if (info.timeText) {
         const time = document.createElement('div');
         time.className = 'fc-event-time';
         time.textContent = info.timeText;
         frame.append(time);
       }
+      const titleContainer = document.createElement('div');
+      titleContainer.className = 'fc-event-title-container';
       const title = document.createElement('div');
       title.className = 'fc-event-title';
       title.textContent = info.event.title;
-      frame.append(title);
+      titleContainer.append(title);
+      frame.append(titleContainer);
       return {domNodes: [frame]};
     }
 
@@ -425,7 +440,7 @@ define('calendar-plus:views/calendar/calendar', [
       const column = document.createElement('section');
       column.style.cssText = 'flex:1 0 220px;min-width:220px;';
       const header = document.createElement('div');
-      header.style.cssText = `position:sticky;top:0;z-index:5;background:var(--body-bg, #fff);height:44px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:10px;font-weight:600;text-align:center;border-top:3px solid ${this.colorForUser(user.id)};`;
+      header.style.cssText = `position:sticky;top:0;z-index:5;background:var(--table-bg, #fff);height:44px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:10px;font-weight:600;text-align:center;border-top:3px solid ${this.colorForUser(user.id)};`;
       header.title = user.name;
       header.textContent = user.name;
       const body = document.createElement('div');

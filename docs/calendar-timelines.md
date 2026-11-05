@@ -36,3 +36,9 @@ Reassignment uses the standard record update API and checks edit access and fiel
 # Extension settings
 
 In Administration, the shared Extension Settings section contains a Calendar Plus row. Its settings page provides Enable tooltip on hover and Enable color gradient in month and week mode. Both default to enabled when unset. Disabling gradients makes shared Month and Week events use solid entity colors. Day and Timeline always use solid entity colors. Tooltips apply to every event in standard and custom Month, Week, Day, and Timeline calendars, including personal calendars. Settings are system-wide and use the standard admin-only Settings save flow. The PHP module is CalendarPlus and the client module is calendar-plus.
+
+Timeline event gap (px) controls horizontal spacing in every Timeline, from 0 to 100 pixels. The default 0 keeps adjacent event ranges on one row while genuine overlaps still stack. A value of 10 restores the original spacing. Larger gaps can create additional rows for events that are close together on screen, depending on zoom. Changes take effect when a Timeline opens or refreshes.
+
+Tooltip delay (seconds) controls the hover/focus wait before details appear in every calendar, including Timeline. It defaults to 1 second, accepts fractional values from 0 to 60, and uses 0 for immediate display. Leaving the event before the delay elapses cancels the pending tooltip.
+
+Attendee details include accepted (✓), declined (✕), and tentative or no-answer (?) indicators. Hovering a symbol exposes the exact response status; accessible labels distinguish tentative from no answer. Users, contacts, and leads remain listed regardless of response. Custom event types using standard attendee status columns are supported; relationships without attendance statuses remain plain names.

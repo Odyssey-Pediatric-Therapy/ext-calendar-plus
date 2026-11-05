@@ -257,8 +257,8 @@ test('all Timeline types attach the common tooltip to events, skip backgrounds, 
     assert.equal(adapted.title, 'Follow up');
     view.getDateTime = () => ({toDisplay: value => value, toDisplayDate: value => value});
     view.translate = name => name;
-    const summary = view.eventTooltip.detailsFor(adapted, {usersNames: {bob: 'Bob'}});
-    assert.equal(summary.rows.find(row => row.label === 'users').value, 'Bob');
+    const summary = view.eventTooltip.detailsFor(adapted, {collaboratorsNames: {bob: 'Bob'}});
+    assert.equal(summary.rows.find(row => row.label === 'collaborators').value, 'Bob');
     config.calendarPlusTooltipEnabled = false;
     let reads = 0;
     view.getModelFactory = () => { reads++; throw new Error('Unexpected read'); };
@@ -268,5 +268,52 @@ test('all Timeline types attach the common tooltip to events, skip backgrounds, 
     view.syncTimelineTooltips();
     assert.equal(view.eventTooltip.bindings.size, 0);
     assert.equal(view.eventAppearances.size, 0);
+  }
+});
+
+
+test('Timeline removes artificial horizontal collisions on creation without changing vertical separation', async () => {
+  const {view} = fixture();
+  view.calendarType = 'single';
+  const options = [];
+  const itemSets = [];
+  const timeline = {setOptions: value => options.push(plain(value)), setItems: value => itemSets.push(value), on() {}};
+  await view.fetchEvents(date, date, () => { view.timeline = timeline; });
+  assert.deepEqual(options, [{margin: {item: {horizontal: 0, vertical: 12}, axis: 6}}]);
+  await view.fetchEvents(date, date, () => {});
+  assert.equal(options.length, 1);
+  assert.deepEqual(itemSets, [['event']]);
+});
+
+
+test('Timeline gap uses admin configuration and refresh reapplies a changed gap without duplicate listeners', async () => {
+  const {view, config} = fixture();
+  view.calendarType = 'single';
+  const gaps = [];
+  let bindings = 0;
+  let itemSets = 0;
+  const timeline = {setOptions: value => gaps.push(value.margin.item.horizontal), setItems: () => itemSets++, on: () => bindings++};
+  config.calendarPlusTimelineEventGap = 10;
+  await view.fetchEvents(date, date, () => { view.timeline = timeline; });
+  config.calendarPlusTimelineEventGap = 0;
+  await view.fetchEvents(date, date, () => {});
+  config.calendarPlusTimelineEventGap = 25;
+  await view.fetchEvents(date, date, () => {});
+  await view.fetchEvents(date, date, () => {});
+  assert.deepEqual(gaps, [10, 0, 25]);
+  assert.equal(bindings, 1);
+  assert.equal(itemSets, 3);
+});
+
+test('Timeline gap rejects invalid values and stays within the supported range', async () => {
+  for (const [value, expected] of [[null, 0], ['invalid', 0], [-2, 0], [150, 100]]) {
+    const {view, config} = fixture();
+    view.calendarType = 'single';
+    config.calendarPlusTimelineEventGap = value;
+    let horizontal;
+    await view.fetchEvents(date, date, () => {
+      view.timeline = {setOptions: value => { horizontal = value.margin.item.horizontal; }, setItems() {}, on() {}};
+    });
+    assert.equal(horizontal, expected);
   }
 });

@@ -144,9 +144,20 @@ define('calendar-plus:views/calendar/timeline', [
       const deliver = events => {
         if (this.removed || revision !== this.fetchRevision) return;
         callback(events);
-        if (this.timeline && this.tooltipTimeline !== this.timeline) {
-          this.tooltipTimeline = this.timeline;
-          this.timeline.on('changed', () => this.syncTimelineTooltips());
+        if (this.timeline) {
+          const isNew = this.tooltipTimeline !== this.timeline;
+          const configuredGap = this.getConfig().get('calendarPlusTimelineEventGap');
+          const gap = Number.isFinite(configuredGap) ? Math.max(0, Math.min(100, Math.round(configuredGap))) : 0;
+          if (isNew || gap !== this.timelineEventGap) {
+            this.timelineEventGap = gap;
+            this.timeline.setOptions({margin: {item: {horizontal: gap, vertical: 12}, axis: 6}});
+            // Margin changes alone do not invalidate vis's existing row assignments.
+            this.timeline.setItems(events);
+          }
+          if (isNew) {
+            this.tooltipTimeline = this.timeline;
+            this.timeline.on('changed', () => this.syncTimelineTooltips());
+          }
         }
         this.syncTimelineTooltips();
         this.$el?.find('.calendar-type-button-group button[data-toggle="dropdown"]').prop('disabled', false);

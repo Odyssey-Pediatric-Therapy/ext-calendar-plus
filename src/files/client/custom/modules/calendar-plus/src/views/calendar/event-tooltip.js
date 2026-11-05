@@ -44,11 +44,16 @@ define('calendar-plus:views/calendar/event-tooltip', [], () => {
       return this.view.getConfig().get('calendarPlusTooltipEnabled') !== false;
     }
 
+    showDelay() {
+      const seconds = this.view.getConfig().get('calendarPlusTooltipDelay');
+      return (Number.isFinite(seconds) && seconds >= 0 ? Math.min(seconds, 60) : 1) * 1000;
+    }
+
     scheduleShow(anchor) {
       if (!this.enabled() || this.view.reassignmentDrag) { this.hide(); return; }
       this.hide();
       this.pendingAnchor = anchor;
-      this.showTimer = setTimeout(() => { void this.show(anchor); }, 180);
+      this.showTimer = setTimeout(() => { void this.show(anchor); }, this.showDelay());
     }
 
     scheduleHide(anchor) {
@@ -110,7 +115,8 @@ define('calendar-plus:views/calendar/event-tooltip', [], () => {
             model.id = recordId;
             await model.fetch();
             const fields = ['name', 'status', 'dateStart', 'dateEnd', 'dateStartDate', 'dateEndDate',
-              'assignedUserName', 'assignedUsersNames', 'usersNames', 'contactsNames', 'leadsNames', 'location'];
+              'assignedUserName', 'assignedUsersNames', 'collaboratorsNames', 'usersNames', 'contactsNames', 'leadsNames',
+              'usersColumns', 'contactsColumns', 'leadsColumns', 'location'];
             return Object.fromEntries(fields.map(name => [name, model.get(name)]));
           } catch (error) {
             // Calendar access can permit a summary without permission to read the full record.
@@ -122,6 +128,25 @@ define('calendar-plus:views/calendar/event-tooltip', [], () => {
       return this.cache.get(key);
     }
 
+    attendeesFor(scope, details) {
+      const participants = [];
+      for (const field of ['users', 'contacts', 'leads']) {
+        const columns = details[`${field}Columns`] || {};
+        const supportsStatus = ['Meeting', 'Call'].includes(scope) ||
+          !!this.view.getMetadata?.().get(['entityDefs', scope, 'fields', field, 'columns', 'status']) ||
+          Object.values(columns).some(value => value && typeof value === 'object' && 'status' in value);
+        for (const [id, name] of Object.entries(details[`${field}Names`] || {})) {
+          if (typeof name !== 'string') continue;
+          const rawStatus = columns[id]?.status;
+          const status = supportsStatus ? (['Accepted', 'Declined', 'Tentative'].includes(rawStatus) ? rawStatus : 'None') : null;
+          const indicator = status === 'Accepted' ? '✓' : status === 'Declined' ? '✕' : status ? '?' : null;
+          const statusLabel = status ? this.view.translate(status === 'None' ? 'No answer' : status, 'labels', 'Calendar') : null;
+          participants.push({name, status, indicator, statusLabel});
+        }
+      }
+      return participants;
+    }
+
     detailsFor(event, details = null) {
       const view = this.view;
       const source = (view.sharedEvents || []).find(item => item.id === event.id) || {...event.extendedProps, title: event.title};
@@ -129,7 +154,7 @@ define('calendar-plus:views/calendar/event-tooltip', [], () => {
       const data = {...source, ...available};
       const scope = data.scope || event.extendedProps.scope;
       const rows = [];
-      const add = (label, value) => { if (value) rows.push({label, value}); };
+      const add = (label, value, extra = {}) => { if (value) rows.push({label, value, ...extra}); };
       const names = map => map && typeof map === 'object' ? Object.values(map).filter(value => typeof value === 'string') : [];
       const dateTime = view.getDateTime();
       const start = data.dateStartDate ? dateTime.toDisplayDate(data.dateStartDate) : dateTime.toDisplay(data.dateStart);
@@ -142,17 +167,21 @@ define('calendar-plus:views/calendar/event-tooltip', [], () => {
       const assigned = [...new Set([data.assignedUserName, ...names(data.assignedUsersNames)].filter(Boolean))];
       add(view.translate('assignedUser', 'fields', scope), assigned.join(', '));
       const attendeeFields = ['usersNames', 'contactsNames', 'leadsNames'];
-      if (details && attendeeFields.some(name => details[name] !== undefined)) {
-        const participants = [...new Set(attendeeFields.flatMap(name => names(details[name])))];
+      if (scope === 'Task') {
+        const collaborators = names(data.collaboratorsNames);
+        add(view.translate('collaborators', 'fields', scope), collaborators.join(', '));
+      } else if (details && attendeeFields.some(name => details[name] !== undefined)) {
+        const participants = this.attendeesFor(scope, details);
         const label = ['Meeting', 'Call'].includes(scope) ? view.translate('Attendees', 'labels', 'Calendar') :
           view.translate('users', 'fields', scope);
-        add(label, participants.join(', ') || view.translate('None'));
+        const value = participants.map(person => [person.name, person.indicator].filter(Boolean).join(' ')).join(', ');
+        add(label, value || view.translate('None'), participants.some(person => person.indicator) ? {participants} : {});
       } else {
         const people = (source.calendarUserIds || []).map(id => (view.sharedUsers || view.userList || []).find(user => user.id === id)?.name).filter(Boolean);
         add(view.translate('Calendar users', 'labels', 'Calendar'), people.join(', '));
       }
       if (data.status) {
-        add(view.translate('status', 'fields', scope), view.getLanguage?.()?.translateOption(data.status, 'status', scope) || data.status);
+        add(view.translate('status', 'fields', scope), view.getLanguage?.()?.translateOption(data.status, 'status', scope) || data.status, {kind: 'status'});
       }
       if (typeof data.location === 'string') add(view.translate('location', 'fields', scope), data.location);
       return {title: data.name || source.title || event.title, type: view.translate(scope, 'scopeNames'), rows};
@@ -164,14 +193,37 @@ define('calendar-plus:views/calendar/event-tooltip', [], () => {
       heading.className = 'cp-calendar-event-tooltip-title';
       heading.textContent = title;
       const entity = document.createElement('div');
-      entity.className = 'text-muted small';
+      entity.className = 'cp-calendar-event-tooltip-type';
       entity.textContent = type;
       const list = document.createElement('dl');
+      list.className = 'cp-calendar-event-tooltip-details';
       for (const row of rows) {
         const term = document.createElement('dt');
         term.textContent = row.label;
         const description = document.createElement('dd');
-        description.textContent = row.value;
+        if (row.participants?.length) {
+          term.className = 'cp-calendar-event-attendee-label';
+          description.className = 'cp-calendar-event-attendees';
+          for (const person of row.participants) {
+            const attendee = document.createElement('span');
+            attendee.className = 'cp-calendar-event-attendee';
+            const name = document.createElement('span');
+            name.textContent = person.name;
+            attendee.append(name);
+            if (person.indicator) {
+              const indicator = document.createElement('span');
+              indicator.className = `cp-calendar-attendance-status cp-calendar-attendance-${person.status.toLowerCase()}`;
+              indicator.textContent = person.indicator;
+              indicator.title = person.statusLabel;
+              indicator.setAttribute('aria-label', person.statusLabel);
+              attendee.append(indicator);
+            }
+            description.append(attendee);
+          }
+        } else {
+          if (row.kind === 'status') description.className = 'cp-calendar-event-status';
+          description.textContent = row.value;
+        }
         list.append(term, description);
       }
       session.panel.replaceChildren(heading, entity, list);

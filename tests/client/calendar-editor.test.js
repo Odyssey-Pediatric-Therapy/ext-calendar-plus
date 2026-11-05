@@ -216,12 +216,14 @@ test('Calendar Plus settings default on without overwriting saved false values',
   view.model = {get: name => values[name], set: (name, value) => { values[name] = value; }};
   view.setup();
   assert.equal(values.calendarPlusTooltipEnabled, true);
+  assert.equal(values.calendarPlusTimelineEventGap, 0);
+  assert.equal(values.calendarPlusTooltipDelay, 1);
   assert.equal(values.calendarPlusColorGradientEnabled, false);
   assert.equal(view.layoutName, 'calendarPlusSettings');
   assert.equal(view.parentInitialized, true);
 });
 
-test('Admin uses the shared Extension Settings section with a Calendar Plus row and two enabled-by-default fields', () => {
+test('Admin uses the shared Extension Settings section with a Calendar Plus row with enabled feature defaults and a configurable Timeline gap', () => {
   const resources = new URL('../../src/files/custom/Espo/Modules/CalendarPlus/Resources/', import.meta.url);
   const panel = JSON.parse(readFileSync(new URL('metadata/app/adminPanel.json', resources))).extensionSettings;
   const item = panel.itemList.find(item => typeof item === 'object');
@@ -231,5 +233,63 @@ test('Admin uses the shared Extension Settings section with a Calendar Plus row 
   const fields = JSON.parse(readFileSync(new URL('metadata/entityDefs/Settings.json', resources))).fields;
   assert.equal(fields.calendarPlusTooltipEnabled.default, true);
   assert.equal(fields.calendarPlusColorGradientEnabled.default, true);
+  assert.equal(fields.calendarPlusTooltipDelay.default, 1);
+  assert.equal(fields.calendarPlusTooltipDelay.min, 0);
+  assert.equal(fields.calendarPlusTimelineEventGap.default, 0);
+  assert.equal(fields.calendarPlusTimelineEventGap.min, 0);
+  assert.equal(fields.calendarPlusTimelineEventGap.max, 100);
   assert.equal(fields.calendarPlusTooltipEnabled.onlyAdmin, undefined, 'runtime flags must be readable by regular calendar users');
+});
+
+
+test('Calendar Plus settings preserve an existing Timeline gap', () => {
+  const View = load('views/admin/settings.js', {'views/settings/record/edit': class { setup() {} }});
+  const view = new View();
+  const values = {calendarPlusTimelineEventGap: 10};
+  view.model = {get: name => values[name], set: (name, value) => { values[name] = value; }};
+  view.setup();
+  assert.equal(values.calendarPlusTimelineEventGap, 10);
+});
+
+
+test('Calendar Plus settings preserve saved zero and fractional tooltip delays', () => {
+  const View = load('views/admin/settings.js', {'views/settings/record/edit': class { setup() {} }});
+  for (const delay of [0, 0.5, 2]) {
+    const view = new View();
+    const values = {calendarPlusTooltipDelay: delay};
+    view.model = {get: name => values[name], set: (name, value) => { values[name] = value; }};
+    view.setup();
+    assert.equal(values.calendarPlusTooltipDelay, delay);
+  }
+});
+
+
+test('tooltip delay is beside the enable checkbox and hides without losing its value', () => {
+  const View = load('views/admin/settings.js', {'views/settings/record/edit': class { setup() {} }});
+  const exported = {};
+  vm.runInNewContext(readFileSync(new URL('../../site/client/lib/transpiled/src/dynamic-logic.js', import.meta.url), 'utf8'), {
+    define: (name, deps, factory) => factory(exported, {inject: () => () => {}}, class {}),
+  });
+  const settings = new View();
+  const values = {calendarPlusTooltipEnabled: false, calendarPlusTooltipDelay: 2.5};
+  const states = [];
+  const model = {has: name => name in values, get: name => values[name]};
+  const logic = new exported.default(settings.dynamicLogicDefs, {
+    model,
+    hideField: name => states.push([name, false]),
+    showField: name => states.push([name, true]),
+  });
+  logic.process();
+  values.calendarPlusTooltipEnabled = true;
+  logic.process();
+  values.calendarPlusTooltipEnabled = false;
+  logic.process();
+  assert.deepEqual(states, [
+    ['calendarPlusTooltipDelay', false],
+    ['calendarPlusTooltipDelay', true],
+    ['calendarPlusTooltipDelay', false],
+  ]);
+  assert.equal(values.calendarPlusTooltipDelay, 2.5);
+  const layout = JSON.parse(readFileSync(new URL('../../src/files/custom/Espo/Modules/CalendarPlus/Resources/layouts/Settings/calendarPlusSettings.json', import.meta.url)));
+  assert.deepEqual(layout[0].rows[0].map(cell => cell.name), ['calendarPlusTooltipEnabled', 'calendarPlusTooltipDelay']);
 });

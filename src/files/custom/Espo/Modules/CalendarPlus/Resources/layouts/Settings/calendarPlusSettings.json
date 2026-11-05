@@ -5,11 +5,19 @@
                 {
                     "name": "calendarPlusTooltipEnabled"
                 },
-                false
+                {
+                    "name": "calendarPlusTooltipDelay"
+                }
             ],
             [
                 {
                     "name": "calendarPlusColorGradientEnabled"
+                },
+                false
+            ],
+            [
+                {
+                    "name": "calendarPlusTimelineEventGap"
                 },
                 false
             ]

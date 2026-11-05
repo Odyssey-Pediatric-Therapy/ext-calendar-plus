@@ -5,6 +5,15 @@
         },
         "calendarPlusSharedSelection": {
             "type": "jsonObject"
+        },
+        "calendarSlotDuration": {
+            "options": [
+                "",
+                5,
+                10,
+                15,
+                30
+            ]
         }
     }
 }

@@ -14,7 +14,11 @@
         "Personal Timeline": "Personal Timeline",
         "Drop to reassign": "Drop to reassign",
         "Attendees": "Attendees",
-        "Time Zone": "Time Zone"
+        "Time Zone": "Time Zone",
+        "Accepted": "Accepted",
+        "Declined": "Declined",
+        "Tentative": "Tentative",
+        "No answer": "No answer"
     },
     "messages": {
         "Select Timeline Members": "Enter a name and select at least one team or user.",

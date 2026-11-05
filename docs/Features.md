@@ -1,0 +1,14 @@
+Features:
+- See everyone’s schedule together. Combine teams and individual people in one shared calendar.
+- Choose the right perspective. Switch between Day, Week, Month, and Timeline.
+- Compare availability side by side. Shared Day gives each person an aligned column.
+- Reschedule and reassign visually. Drag events to change times or move responsibility between people in shared Day and Week.
+- Focus on the people who matter. Instantly show or hide individual schedules.
+- Spot someone’s events quickly. Hover over their legend entry to highlight their schedule.
+- Keep event cards clean. Hover for times, attendees, assignees, and other details.
+- Recognize people and activity types. Stable person colors, initials, and optional gradients provide visual cues.
+- Save calendars for different workflows. Keep dedicated views for departments, projects, or cross-team coordination.
+- Keep team calendars current. Membership refreshes automatically when calendars fetch events, excluding inactive users.
+- Preserve attendee relationships. Reassign responsibility without adding the previous owner as an attendee.
+- Respect existing CRM permissions. Calendar Plus uses EspoCRM’s access controls and standard event records.
+- Added 5, 10, 60, and 120-minute time slots

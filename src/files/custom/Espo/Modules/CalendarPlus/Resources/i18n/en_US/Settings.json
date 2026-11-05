@@ -1,10 +1,14 @@
 {
     "fields": {
         "calendarPlusTooltipEnabled": "Enable tooltip on hover",
-        "calendarPlusColorGradientEnabled": "Enable color gradient in month and week mode"
+        "calendarPlusColorGradientEnabled": "Enable color gradient in month and week mode",
+        "calendarPlusTimelineEventGap": "Timeline event gap (px)",
+        "calendarPlusTooltipDelay": "Tooltip delay (seconds)"
     },
     "tooltips": {
         "calendarPlusTooltipEnabled": "Show event details when hovering over or keyboard-focusing an event in any view, including Timeline.",
-        "calendarPlusColorGradientEnabled": "Blend the user color into the entity type color in shared Month and Week views. Day and Timeline use solid entity colors."
+        "calendarPlusColorGradientEnabled": "Blend the user color into the entity type color in shared Month and Week views. Day and Timeline use solid entity colors.",
+        "calendarPlusTimelineEventGap": "Horizontal spacing between Timeline events, from 0 to 100 pixels. Use 0 to keep back-to-back events on the same row, or 10 for the original spacing. Larger gaps may push nearby events onto separate rows, especially when zoomed out.",
+        "calendarPlusTooltipDelay": "How long to hover over or keyboard-focus an event before showing its tooltip. Applies to all calendar views, including Timeline. Default: 1 second. Use 0 for no delay; fractional seconds such as 0.5 are supported."
     }
 }

@@ -200,7 +200,9 @@ test('event cards keep only title and time, including shared events', async () =
   await view.fetchEvents('from', 'to', () => {});
   const event = {title: 'Planning', extendedProps: {calendarUserIds: ['ann', 'bob']}};
   const content = view.sharedEventContent({timeText: '09:00', event}).domNodes[0];
-  assert.equal(content.children[1].textContent, 'Planning');
+  assert.equal(content.className, 'fc-event-main-frame cp-calendar-event-content');
+  assert.equal(content.children[1].className, 'fc-event-title-container');
+  assert.equal(content.children[1].children[0].textContent, 'Planning');
   assert.equal(content.children.length, 2);
   const day = view.sharedEventContent({timeText: '09:00', event}, 'ann').domNodes[0];
   assert.equal(day.children.length, 2);
@@ -584,7 +586,7 @@ test('event tooltips show times, assignee, and actual attendees beyond the selec
   const details = await view.eventTooltip.loadDetails(event);
   const summary = view.eventTooltip.detailsFor(event, details);
   assert.equal(summary.rows.some(row => row.value === '2026-11-05 09:00:00'), true);
-  assert.equal(summary.rows.find(row => row.label === 'Attendees').value, 'Ann, Outside participant, Client contact');
+  assert.equal(summary.rows.find(row => row.label === 'Attendees').value, 'Ann ?, Outside participant ?, Client contact ?');
   assert.equal(summary.rows.find(row => row.label === 'assignedUser').value, 'Ann');
   assert.equal(summary.rows.find(row => row.label === 'location').value, 'Room A');
   const panel = view.eventTooltip.active.panel;
@@ -639,10 +641,10 @@ test('all-day tooltip dates retain inclusive dates and Task people are collabora
   const {view} = fixture('month');
   const event = {id: 'Task-date', title: 'Task', extendedProps: {scope: 'Task', calendarUserIds: [],
     dateStartDate: '2026-11-05', dateEndDate: '2026-11-06'}};
-  const summary = view.eventTooltip.detailsFor(event, {usersNames: {bob: 'Bob'}});
+  const summary = view.eventTooltip.detailsFor(event, {collaboratorsNames: {bob: 'Bob'}});
   assert.equal(summary.rows.find(row => row.label === 'dateEnd').value, '2026-11-06');
   assert.equal(summary.rows.some(row => row.label === 'Time Zone'), false);
-  assert.equal(summary.rows.find(row => row.label === 'users').value, 'Bob');
+  assert.equal(summary.rows.find(row => row.label === 'collaborators').value, 'Bob');
   assert.equal(summary.rows.some(row => row.label === 'Attendees'), false);
 });
 
@@ -716,4 +718,100 @@ test('standard Month, Week, and Day calendars mount detailed tooltips and obey t
     assert.equal(view.eventTooltip.bindings.size, 0);
     assert.equal(view.eventAppearances.size, 0);
   }
+});
+
+
+test('tooltip delay defaults to one second, honors configuration, and cancels when leaving before it elapses', () => {
+  let Tooltip;
+  let nextId = 0;
+  const pending = new Map();
+  vm.runInNewContext(readFileSync(new URL('../../src/files/client/custom/modules/calendar-plus/src/views/calendar/event-tooltip.js', import.meta.url), 'utf8'), {
+    define: (name, deps, factory) => { Tooltip = factory(); },
+    setTimeout: (callback, delay) => { const id = ++nextId; pending.set(id, {callback, delay}); return id; },
+    clearTimeout: id => pending.delete(id),
+  });
+  const config = {};
+  const tooltip = new Tooltip({getConfig: () => ({get: name => config[name]})});
+  const anchor = {};
+  let shown = 0;
+  tooltip.show = () => { shown++; };
+  for (const [seconds, expected] of [[undefined, 1000], [null, 1000], [0, 0], [0.5, 500], [2, 2000], [-1, 1000], ['invalid', 1000], [100, 60000]]) {
+    config.calendarPlusTooltipDelay = seconds;
+    tooltip.scheduleShow(anchor);
+    const timer = pending.get(tooltip.showTimer);
+    assert.equal(timer.delay, expected);
+    const previous = shown;
+    tooltip.scheduleHide(anchor);
+    assert.equal(pending.has(tooltip.showTimer), false);
+    assert.equal(shown, previous);
+    tooltip.scheduleShow(anchor);
+    pending.get(tooltip.showTimer).callback();
+    assert.equal(shown, previous + 1);
+    tooltip.hide();
+  }
+  config.calendarPlusTooltipEnabled = false;
+  tooltip.scheduleShow(anchor);
+  assert.equal(pending.size, 0);
+});
+
+
+test('attendee indicators include all response statuses for users, contacts, and leads in Meeting and Call tooltips', async () => {
+  for (const scope of ['Meeting', 'Call']) {
+    const {view} = fixture('month');
+    const record = {
+      usersNames: {ann: 'Ann', bob: 'Bob', waiting: 'Waiting'},
+      usersColumns: {ann: {status: 'Accepted'}, bob: {status: 'Declined'}, waiting: {status: 'None'}},
+      contactsNames: {client: 'Client <b>name</b>'}, contactsColumns: {client: {status: 'Tentative'}},
+      leadsNames: {lead: 'Lead', unknown: 'Unknown'}, leadsColumns: {unknown: {status: 'Unrecognized'}},
+    };
+    view.getModelFactory = () => ({create: async () => ({fetch: async () => {}, get: name => record[name]})});
+    const event = tooltipEvent(scope);
+    const details = await view.eventTooltip.loadDetails(event);
+    assert.equal(details.usersColumns.ann.status, 'Accepted');
+    const row = view.eventTooltip.detailsFor(event, details).rows.find(row => row.label === 'Attendees');
+    assert.equal(row.value, 'Ann ✓, Bob ✕, Waiting ?, Client <b>name</b> ?, Lead ?, Unknown ?');
+    assert.deepEqual(Array.from(row.participants, p => p.status), ['Accepted', 'Declined', 'None', 'Tentative', 'None', 'None']);
+    assert.deepEqual(Array.from(row.participants, p => p.statusLabel), ['Accepted', 'Declined', 'No answer', 'Tentative', 'No answer', 'No answer']);
+    const element = new Element();
+    view.registerEventElement({el: element, event});
+    await view.eventTooltip.show(element);
+    const list = view.eventTooltip.active.panel.children[2];
+    const attendees = list.children.find(child => child.className === 'cp-calendar-event-attendees');
+    assert.equal(attendees.children.length, 6);
+    assert.equal(attendees.children[3].children[0].textContent, 'Client <b>name</b>');
+    assert.equal(attendees.children[3].children[1].getAttribute('aria-label'), 'Tentative');
+    assert.equal(attendees.children[4].children[1].getAttribute('aria-label'), 'No answer');
+    view.eventTooltip.hide();
+  }
+});
+
+test('custom event attendee status columns get indicators while ordinary collaborators remain a plain list', () => {
+  const {view} = fixture('month');
+  const custom = tooltipEvent('CWorkshop');
+  const details = {usersNames: {one: 'Same name', two: 'Same name'}, usersColumns: {one: {status: 'Accepted'}, two: {status: 'Tentative'}}};
+  const row = view.eventTooltip.detailsFor(custom, details).rows.find(row => row.label === 'users');
+  assert.equal(row.value, 'Same name ✓, Same name ?');
+  assert.equal(row.participants.length, 2);
+  const plain = view.eventTooltip.detailsFor(tooltipEvent('Task'), {collaboratorsNames: {bob: 'Bob'}}).rows.find(row => row.label === 'collaborators');
+  assert.equal(plain.value, 'Bob');
+  assert.equal(plain.participants, undefined);
+});
+
+
+test('Task tooltips omit calendar-user fallback and only show actual collaborators', async () => {
+  const {view} = fixture('month');
+  view.sharedUsers = [{id: 'ann', name: 'Ann'}];
+  const event = tooltipEvent('Task');
+  for (const details of [null, {}, {collaboratorsNames: {}}, {usersNames: {ann: 'Ann'}}]) {
+    const summary = view.eventTooltip.detailsFor(event, details);
+    assert.equal(summary.rows.some(row => ['Calendar users', 'Attendees', 'users', 'collaborators'].includes(row.label)), false);
+  }
+  const record = {assignedUserName: 'Ann', collaboratorsNames: {bob: 'Bob', maya: 'Maya'}};
+  view.getModelFactory = () => ({create: async () => ({fetch: async () => {}, get: name => record[name]})});
+  const details = await view.eventTooltip.loadDetails(event);
+  assert.equal(details.collaboratorsNames.bob, 'Bob');
+  const summary = view.eventTooltip.detailsFor(event, details);
+  assert.equal(summary.rows.find(row => row.label === 'collaborators').value, 'Bob, Maya');
+  assert.equal(summary.rows.find(row => row.label === 'assignedUser').value, 'Ann');
+  assert.equal(summary.rows.some(row => row.label === 'Calendar users'), false);
 });
