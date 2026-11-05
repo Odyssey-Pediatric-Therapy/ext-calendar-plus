@@ -1,6 +1,6 @@
 define('calendar-plus:views/calendar/calendar', [
-  'crm:views/calendar/calendar', 'fullcalendar', 'calendar-plus:calendar-colors', 'calendar-plus:views/calendar/event-tooltip',
-], (Calendar, FullCalendar, Colors, EventTooltip) => {
+  'crm:views/calendar/calendar', 'fullcalendar', 'calendar-plus:calendar-colors', 'calendar-plus:views/calendar/event-tooltip', 'calendar-plus:calendar-definitions',
+], (Calendar, FullCalendar, Colors, EventTooltip, Definitions) => {
   // Share the standard calendar's editing callbacks; no scheduler plugin is required.
   const optionNames = [
     'slotDuration', 'slotLabelInterval', 'slotLabelFormat', 'eventTimeFormat',
@@ -23,6 +23,9 @@ define('calendar-plus:views/calendar/calendar', [
 
     setup() {
       super.setup();
+      if (this.getConfig().get('calendarPlusTasksAllDay') === false) {
+        this.allDayScopeList = this.allDayScopeList.filter(scope => scope !== 'Task');
+      }
       this.extendedProps = [...this.extendedProps, 'calendarUserIds', 'visibleCalendarUserIds'];
       const hidden = this.getStorage().get('calendarPlus', this.personFilterKey());
       this.hiddenUserIds = new Set(Array.isArray(hidden) ? hidden.filter(id => typeof id === 'string') : []);
@@ -33,7 +36,7 @@ define('calendar-plus:views/calendar/calendar', [
       this.sharedUsers = [];
       this.sharedEvents = [];
       this.requestRevision = 0;
-      this.pendingReassignments = new Set();
+      this.pendingPersonDrops = new Set();
       this.on('remove', () => {
         this.sharedRemoved = true;
         this.resetCalendarRendering();
@@ -51,6 +54,12 @@ define('calendar-plus:views/calendar/calendar', [
       }
     }
 
+    handleScrollToNow() {
+      // An explicit scroll-hour preference takes priority over today's automatic scroll.
+      if (this.options.scrollHour != null || this.getPreferences().get('calendarScrollHour') != null) return;
+      return super.handleScrollToNow();
+    }
+
     prepareRender() {
       // Saving a shared view re-renders this instance after replacing its DOM.
       this.resetCalendarRendering();
@@ -59,7 +68,7 @@ define('calendar-plus:views/calendar/calendar', [
 
     resetCalendarRendering() {
       this.eventTooltip.reset();
-      this.finishReassignmentDrag();
+      this.finishPersonDropDrag();
       this.requestRevision++;
       this.clearDayColumns();
       this.legendElement?.remove();
@@ -127,7 +136,10 @@ define('calendar-plus:views/calendar/calendar', [
       const current = () => !this.sharedRemoved && revision === this.requestRevision;
       Espo.Ui.notifyWait();
       try {
-        const {users} = await Espo.Ajax.postRequest('CalendarPlus/Users', {teamIdList: this.teamIdList || [], userIdList: this.selectedUserIds || []});
+        const item = Definitions.find(this.getPreferences(), this.mode);
+        const selection = Definitions.membershipSelection({teamIdList: this.teamIdList || [], userIdList: this.selectedUserIds || [], ...item});
+        const {users} = await Espo.Ajax.postRequest('CalendarPlus/Users', {...selection,
+          ...(Definitions.showInactiveUsers(this.getPreferences(), this.mode) ? {includeInactiveUsers: true} : {})});
         if (!current()) return;
         const query = {from, to, agenda: this.viewMode !== 'month', userIdList: users.map(user => user.id).join(','),
           scopeList: this.enabledScopeList.join(',')};
@@ -183,9 +195,9 @@ define('calendar-plus:views/calendar/calendar', [
       }
       this.calendar.setOption('slotEventOverlap', false);
       this.calendar.setOption('eventDragStart', this.viewMode === 'agendaWeek' ?
-        info => this.startReassignmentDrag(info, this.calendar) : () => this.eventTooltip.hide());
+        info => this.startPersonDropDrag(info, this.calendar) : () => this.eventTooltip.hide());
       this.calendar.setOption('eventDragStop', this.viewMode === 'agendaWeek' ?
-        info => this.stopReassignmentDrag(info) : null);
+        info => this.stopPersonDropDrag(info) : null);
       this.renderLegend();
       if (this.viewMode === 'agendaDay') {
         this.$calendar.hide();
@@ -365,7 +377,7 @@ define('calendar-plus:views/calendar/calendar', [
         badge.setAttribute('aria-hidden', 'true');
         button.append(badge, document.createTextNode(user.name), status);
         button.addEventListener('click', () => {
-          if (!this.reassignmentDrag) this.setPersonVisible(user.id, this.hiddenUserIds.has(user.id));
+          if (!this.personDropDrag) this.setPersonVisible(user.id, this.hiddenUserIds.has(user.id));
         });
         button.addEventListener('mouseenter', () => { this.hoveredUserId = user.id; this.updatePersonHighlight(); });
         button.addEventListener('mouseleave', () => { this.hoveredUserId = null; this.updatePersonHighlight(); });
@@ -402,8 +414,14 @@ define('calendar-plus:views/calendar/calendar', [
     renderDayColumns() {
       const users = this.visibleUsers();
       const key = users.map(user => `${user.id}:${user.name}`).join('|');
+      const date = this.calendar.getDate().valueOf();
+      const dateChanged = this.dayColumnsDate !== date;
+      this.dayColumnsDate = date;
+      let reposition = dateChanged;
+      let scrollTop;
       if (key !== this.dayColumnsKey || !this.dayColumnsElement) {
-        const scrollTop = this.dayColumnsElement?.scrollTop;
+        // An empty loading placeholder has no meaningful scroll position to restore.
+        scrollTop = !dateChanged && this.dayCalendars.length ? this.dayColumnsElement?.scrollTop : undefined;
         const scrollLeft = this.dayColumnsElement?.scrollLeft;
         this.clearDayColumns();
         this.dayColumnsKey = key;
@@ -421,8 +439,7 @@ define('calendar-plus:views/calendar/calendar', [
           empty.textContent = this.translate('All calendar people hidden', 'messages', 'Calendar');
           this.dayColumnsElement.append(empty);
         }
-        this.syncColumnScroll();
-        if (scrollTop !== undefined) this.dayColumnsElement.scrollTop = scrollTop;
+        reposition = true;
         if (scrollLeft !== undefined) this.dayColumnsElement.scrollLeft = scrollLeft;
       }
       for (const {calendar, userId} of this.dayCalendars) {
@@ -432,6 +449,16 @@ define('calendar-plus:views/calendar/calendar', [
           calendar.removeAllEvents();
           calendar.addEventSource(this.sharedEvents.filter(event => event.calendarUserIds.includes(userId) ||
             event.display === 'inverse-background').map(event => ({...event, color: Colors.entityColor(this, event.scope) || this.colorForUser(userId)})));
+        });
+      }
+      if (reposition) {
+        const container = this.dayColumnsElement;
+        this.syncColumnScroll(scrollTop);
+        // Reapply once event sources and date changes have completed their DOM updates.
+        queueMicrotask(() => {
+          if (!this.sharedRemoved && this.dayColumnsElement === container && this.dayColumnsDate === date) {
+            this.syncColumnScroll(scrollTop);
+          }
         });
       }
     }
@@ -459,15 +486,15 @@ define('calendar-plus:views/calendar/calendar', [
           try { select(info); } finally { this.options = original; }
           calendar.unselect();
         },
-        eventAllow: (drop, event) => !!this.reassignmentDrag &&
-          this.dayCalendars.some(item => item.calendar === this.reassignmentDrag.calendar) &&
+        eventAllow: (drop, event) => !!this.personDropDrag &&
+          this.dayCalendars.some(item => item.calendar === this.personDropDrag.calendar) &&
           (!options.eventAllow || options.eventAllow(drop, event)),
-        eventDragStart: info => this.startReassignmentDrag(info, calendar),
-        eventDragStop: info => this.stopReassignmentDrag(info),
+        eventDragStart: info => this.startPersonDropDrag(info, calendar),
+        eventDragStop: info => this.stopPersonDropDrag(info),
         eventLeave: info => {
-          if (this.reassignmentDrag) this.reassignmentDrag.restoreSource = info.revert;
+          if (this.personDropDrag) this.personDropDrag.restoreSource = info.revert;
         },
-        eventReceive: info => this.receiveReassignedEvent(info, user.id),
+        eventReceive: info => this.receivePersonDrop(info, user.id),
         eventContent: info => this.sharedEventContent(info),
         eventDidMount: info => this.registerEventElement(info, user.id),
         eventWillUnmount: info => this.unregisterEventElement(info),
@@ -489,55 +516,66 @@ define('calendar-plus:views/calendar/calendar', [
       return null;
     }
 
-    startReassignmentDrag(info, calendar) {
-      this.eventTooltip.hide();
-      this.finishReassignmentDrag();
-      this.reassignmentDrag = {event: info.event, calendar};
-      this.legendElement?.classList.toggle('cp-person-reassigning', true);
-      for (const [id, {button}] of this.legendButtons || []) {
-        button.title = this.translate('Drop to reassign', 'labels', 'Calendar') + ' · ' +
-          (this.sharedUsers.find(user => user.id === id)?.name || '');
+    personDropField(scope) {
+      for (const name of ['users', 'collaborators']) {
+        const field = this.getMetadata().get(['entityDefs', scope, 'fields', name]);
+        const link = this.getMetadata().get(['entityDefs', scope, 'links', name]);
+        if (field?.type === 'linkMultiple' && link?.entity === 'User') return name;
       }
-      this.reassignmentPointerMove = event => {
-        const target = this.legendUserAt(event);
-        for (const [id, {button}] of this.legendButtons || []) {
-          button.classList.toggle('cp-person-reassignment-target', id === target);
-        }
-      };
-      document.addEventListener('pointermove', this.reassignmentPointerMove);
-      document.addEventListener('touchmove', this.reassignmentPointerMove, {passive: true});
+      return 'assignedUser';
     }
 
-    stopReassignmentDrag(info) {
-      const drag = this.reassignmentDrag;
+    startPersonDropDrag(info, calendar) {
+      this.eventTooltip.hide();
+      this.finishPersonDropDrag();
+      this.personDropDrag = {event: info.event, calendar};
+      this.legendElement?.classList.toggle('cp-person-drop-active', true);
+      const label = {users: 'Drop to add attendee', collaborators: 'Drop to add collaborator',
+        assignedUser: 'Drop to reassign'}[this.personDropField(info.event.extendedProps?.scope)];
+      for (const [id, {button}] of this.legendButtons || []) {
+        button.title = this.translate(label, 'labels', 'Calendar') + ' · ' +
+          (this.sharedUsers.find(user => user.id === id)?.name || '');
+      }
+      this.personDropPointerMove = event => {
+        const target = this.legendUserAt(event);
+        for (const [id, {button}] of this.legendButtons || []) {
+          button.classList.toggle('cp-person-drop-target', id === target);
+        }
+      };
+      document.addEventListener('pointermove', this.personDropPointerMove);
+      document.addEventListener('touchmove', this.personDropPointerMove, {passive: true});
+    }
+
+    stopPersonDropDrag(info) {
+      const drag = this.personDropDrag;
       const userId = this.legendUserAt(info.jsEvent);
       if (drag && userId) {
         drag.legendDrop = true;
         // The legend is outside FullCalendar's date grid; its own drag reverts naturally.
-        void this.reassignEvent(info.event, userId);
+        void this.dropEventOnPerson(info.event, userId);
       }
       // FullCalendar emits eventLeave/eventReceive immediately after eventDragStop.
       queueMicrotask(() => {
-        if (this.reassignmentDrag === drag) this.finishReassignmentDrag();
+        if (this.personDropDrag === drag) this.finishPersonDropDrag();
       });
     }
 
-    finishReassignmentDrag() {
-      if (this.reassignmentPointerMove) {
-        document.removeEventListener('pointermove', this.reassignmentPointerMove);
-        document.removeEventListener('touchmove', this.reassignmentPointerMove);
-        this.reassignmentPointerMove = null;
+    finishPersonDropDrag() {
+      if (this.personDropPointerMove) {
+        document.removeEventListener('pointermove', this.personDropPointerMove);
+        document.removeEventListener('touchmove', this.personDropPointerMove);
+        this.personDropPointerMove = null;
       }
-      this.reassignmentDrag = null;
-      this.legendElement?.classList.toggle('cp-person-reassigning', false);
+      this.personDropDrag = null;
+      this.legendElement?.classList.toggle('cp-person-drop-active', false);
       for (const {button} of this.legendButtons?.values() || []) {
-        button.classList.toggle('cp-person-reassignment-target', false);
+        button.classList.toggle('cp-person-drop-target', false);
       }
       this.refreshLegendState();
     }
 
-    async receiveReassignedEvent(info, userId) {
-      const drag = this.reassignmentDrag;
+    async receivePersonDrop(info, userId) {
+      const drag = this.personDropDrag;
       const receivingCalendar = this.dayCalendars.find(item => item.userId === userId)?.calendar;
       const revert = () => {
         if (this.sharedRemoved) return;
@@ -553,7 +591,7 @@ define('calendar-plus:views/calendar/calendar', [
         revert();
         return;
       }
-      return this.reassignEvent(info.event, userId, {moveTime: true, originalEvent: drag.event, revert});
+      return this.dropEventOnPerson(info.event, userId, {moveTime: true, originalEvent: drag.event, revert});
     }
 
     movedEventDates(event, originalEvent) {
@@ -575,19 +613,24 @@ define('calendar-plus:views/calendar/calendar', [
       return attributes;
     }
 
-    async reassignEvent(event, userId, {moveTime = false, originalEvent = null, revert = () => {}} = {}) {
+    async dropEventOnPerson(event, userId, {moveTime = false, originalEvent = null, revert = () => {}} = {}) {
       const {scope, recordId} = event.extendedProps;
       const key = `${scope}-${recordId}`;
       const user = this.sharedUsers.find(item => item.id === userId);
-      if (!user || !scope || !recordId || this.pendingReassignments.has(key)) {
+      if (!user || !scope || !recordId || this.pendingPersonDrops.has(key)) {
         revert();
         return false;
       }
-      this.pendingReassignments.add(key);
+      this.pendingPersonDrops.add(key);
       try {
-        const field = this.getMetadata().get(['entityDefs', scope, 'fields', 'assignedUser']);
-        if (!field || field.readOnly || field.disabled || !this.getAcl().checkField(scope, 'assignedUser', 'edit')) {
-          throw new Error('Assignment is not editable.');
+        const fieldName = this.personDropField(scope);
+        const field = this.getMetadata().get(['entityDefs', scope, 'fields', fieldName]);
+        if (!field || field.readOnly || field.readOnlyAfterCreate || field.disabled ||
+            !this.getAcl().checkField(scope, fieldName, 'edit')) {
+          throw new Error('The participant or assignment field is not editable.');
+        }
+        if (fieldName !== 'assignedUser' && !this.getAcl().checkField(scope, fieldName, 'read')) {
+          throw new Error('The current participant list is not readable.');
         }
         const model = await this.getModelFactory().create(scope);
         model.id = recordId;
@@ -601,10 +644,21 @@ define('calendar-plus:views/calendar/calendar', [
             throw new Error('Dates are not editable.');
           }
         }
-        Espo.Ui.notify(this.translate('saving', 'messages'));
-        this.options.onSave?.();
-        // Do not send usersIds or other attendee relationships. Existing attendees stay as-is.
-        await model.save({assignedUserId: userId, ...dates}, {patch: true});
+        const attributes = {...dates};
+        if (fieldName !== 'assignedUser') {
+          const attribute = `${fieldName}Ids`;
+          const participantIds = model.get(attribute);
+          if (!Array.isArray(participantIds)) throw new Error('The current participant list is unavailable.');
+          // Append only: preserve all existing participants, response statuses, and ownership.
+          if (!participantIds.includes(userId)) attributes[attribute] = [...new Set([...participantIds, userId])];
+        } else if (model.get('assignedUserId') !== userId) {
+          attributes.assignedUserId = userId;
+        }
+        if (Object.keys(attributes).length) {
+          Espo.Ui.notify(this.translate('saving', 'messages'));
+          this.options.onSave?.();
+          await model.save(attributes, {patch: true, wait: true});
+        }
         if (!this.sharedRemoved) {
           this.hiddenUserIds.delete(userId);
           this.getStorage().set('calendarPlus', this.personFilterKey(), [...this.hiddenUserIds]);
@@ -614,22 +668,29 @@ define('calendar-plus:views/calendar/calendar', [
         return true;
       } catch (error) {
         revert();
-        if (!this.sharedRemoved) Espo.Ui.error(this.translate('Could not reassign event', 'messages', 'Calendar'));
+        if (!this.sharedRemoved) Espo.Ui.error(this.translate('Could not update event', 'messages', 'Calendar'));
         return false;
       } finally {
-        this.pendingReassignments.delete(key);
+        this.pendingPersonDrops.delete(key);
       }
     }
 
-    syncColumnScroll() {
+    syncColumnScroll(scrollTop) {
       // The columns have natural height inside one vertical viewport.
-      this.dayColumnsElement.style.maxHeight = `${this.getCalculatedHeight()}px`;
-      this.dayColumnsElement.style.overflowY = 'auto';
-      const hour = String(this.scrollHour).padStart(2, '0');
-      const slot = this.dayColumnsElement.querySelector(`[data-time="${hour}:00:00"]`);
+      const container = this.dayColumnsElement;
+      container.style.maxHeight = `${this.getCalculatedHeight()}px`;
+      container.style.overflowY = 'auto';
+      if (scrollTop !== undefined) {
+        container.scrollTop = scrollTop;
+        return;
+      }
+      const hour = String(this.scrollHour ?? 8).padStart(2, '0');
+      const slot = container.querySelector(`[data-time="${hour}:00:00"]`);
       if (slot) {
-        this.dayColumnsElement.scrollTop = slot.getBoundingClientRect().top -
-          this.dayColumnsElement.getBoundingClientRect().top - 120;
+        const header = container.querySelector('section > div:first-child');
+        const headerHeight = header?.getBoundingClientRect().height || 0;
+        container.scrollTop = Math.max(0, (container.scrollTop || 0) + slot.getBoundingClientRect().top -
+          container.getBoundingClientRect().top - headerHeight);
       }
     }
 

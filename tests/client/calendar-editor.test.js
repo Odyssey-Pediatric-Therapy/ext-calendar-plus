@@ -13,7 +13,7 @@ function load(file, dependencies = {}, espo = {}) {
 }
 const definitions = load('calendar-definitions.js');
 function fixture(item = null) {
-  class Modal { constructor(options) { this.options = options; this.dropdownItemList = []; } }
+  class Modal { constructor(options) { this.options = options; this.dropdownItemList = []; } on(name, callback) { this.onRemove = callback; } }
   class Model { constructor(data) { this.attributes = data; } }
   class Field { constructor(options) { this.options = options; } }
   class Record {
@@ -25,7 +25,7 @@ function fixture(item = null) {
   const Editor = load('views/calendar/modals/calendar.js', {
     'views/modal': Modal, model: Model, 'views/record/edit-for-modal': Record,
     'views/fields/varchar': Field, 'views/fields/enum': Field,
-    'crm:views/calendar/fields/users': Field, 'crm:views/calendar/fields/teams': Field,
+    'calendar-plus:views/calendar/fields/users': Field, 'crm:views/calendar/fields/teams': Field,
     'calendar-plus:calendar-definitions': definitions,
   }, espo);
   const state = {calendarViewDataList: [{id: 'grid', name: 'Team week', mode: 'basicWeek', teamIdList: ['team']}],
@@ -38,7 +38,7 @@ function fixture(item = null) {
   editor.close = () => { state.closed = true; };
   editor.getPreferences = () => ({get: key => state[key], set: (key, value) => { state[key] = value; },
     save: async data => { Object.assign(state, data); if (state.fail) throw new Error('Save failed'); }});
-  return {editor, state};
+  return {editor, state, espo};
 }
 
 test('one editor exposes Day, Week, Month, and Timeline with both team and people selection', () => {
@@ -160,14 +160,14 @@ test('the built-in Timeline always opens shared even if an old named selection i
   assert.equal(page.mounted.calendarItem, null);
 });
 
-test('default Timeline editor preserves old users and exposes only Teams and Users', () => {
+test('default Timeline editor preserves old users and exposes membership settings', () => {
   const {editor, state} = fixture();
   state.sharedCalendarUserList = [{id: 'bob', name: 'Bob'}];
   editor.options.calendar = definitions.sharedTimeline(editor.getPreferences(), {id: 'me', get: () => 'Me'});
   editor.setup();
   assert.deepEqual(Array.from(editor.model.attributes.usersIds), ['bob']);
   const rows = editor.recordView.options.detailLayout[0].rows;
-  assert.deepEqual(Array.from(rows, row => row[0].view.options.name), ['teams', 'users']);
+  assert.deepEqual(Array.from(rows, row => row[0].view.options.name), ['teams', 'users', 'membershipMode']);
   assert.equal(editor.dropdownItemList.length, 0);
   assert.equal(editor.headerText, 'Edit Timeline');
 });
@@ -212,12 +212,13 @@ test('Calendar Plus settings default on without overwriting saved false values',
   class Settings { setup() { this.parentInitialized = true; } }
   const View = load('views/admin/settings.js', {'views/settings/record/edit': Settings});
   const view = new View();
-  const values = {calendarPlusColorGradientEnabled: false};
+  const values = {calendarPlusColorGradientEnabled: false, calendarPlusTasksAllDay: false};
   view.model = {get: name => values[name], set: (name, value) => { values[name] = value; }};
   view.setup();
   assert.equal(values.calendarPlusTooltipEnabled, true);
   assert.equal(values.calendarPlusTimelineEventGap, 0);
   assert.equal(values.calendarPlusTooltipDelay, 1);
+  assert.equal(values.calendarPlusTasksAllDay, false);
   assert.equal(values.calendarPlusColorGradientEnabled, false);
   assert.equal(view.layoutName, 'calendarPlusSettings');
   assert.equal(view.parentInitialized, true);
@@ -233,6 +234,7 @@ test('Admin uses the shared Extension Settings section with a Calendar Plus row 
   const fields = JSON.parse(readFileSync(new URL('metadata/entityDefs/Settings.json', resources))).fields;
   assert.equal(fields.calendarPlusTooltipEnabled.default, true);
   assert.equal(fields.calendarPlusColorGradientEnabled.default, true);
+  assert.equal(fields.calendarPlusTasksAllDay.default, true);
   assert.equal(fields.calendarPlusTooltipDelay.default, 1);
   assert.equal(fields.calendarPlusTooltipDelay.min, 0);
   assert.equal(fields.calendarPlusTimelineEventGap.default, 0);
@@ -292,4 +294,220 @@ test('tooltip delay is beside the enable checkbox and hides without losing its v
   assert.equal(values.calendarPlusTooltipDelay, 2.5);
   const layout = JSON.parse(readFileSync(new URL('../../src/files/custom/Espo/Modules/CalendarPlus/Resources/layouts/Settings/calendarPlusSettings.json', import.meta.url)));
   assert.deepEqual(layout[0].rows[0].map(cell => cell.name), ['calendarPlusTooltipEnabled', 'calendarPlusTooltipDelay']);
+  assert.deepEqual(layout[0].rows[1].map(cell => cell.name), ['calendarPlusColorGradientEnabled', 'calendarPlusTasksAllDay']);
+});
+
+
+function inactiveMenuFixture(state = {}, mode = 'view-grid', fail = false) {
+  class Base { data() { return {}; } getModeDataList() { return []; } }
+  const errors = [];
+  const Buttons = load('views/calendar/mode-buttons.js', {
+    'crm:views/calendar/mode-buttons': Base, 'calendar-plus:calendar-definitions': definitions,
+  }, {Ui: {error: message => errors.push(message)}});
+  state.calendarViewDataList ||= [{id: 'grid', name: 'Grid', mode: 'agendaWeek'}];
+  const parent = {calendarType: mode === 'timeline' ? 'shared' : undefined, actionRefresh() { this.refreshes = (this.refreshes || 0) + 1; }};
+  const saves = [];
+  const preferences = {get: key => state[key], set: (key, value) => { state[key] = value; }, save: async (data, options) => {
+    saves.push({data, options}); Object.assign(state, data); if (fail) throw new Error('Save failed');
+  }};
+  const view = new Buttons();
+  Object.assign(view, {mode, isCustomViewAvailable: true, getCalendarParentView: () => parent,
+    getPreferences: () => preferences, translate: key => key, reRender() { this.renders = (this.renders || 0) + 1; }});
+  return {view, parent, saves, state, errors};
+}
+
+test('top-level inactive-user toggle saves per view without changing memberships or other views', async () => {
+  const state = {calendarPlusViewSettings: {'view:other': {showInactiveUsers: true}}};
+  const {view, parent, saves} = inactiveMenuFixture(state);
+  assert.equal(view.data().inactiveUsersAvailable, true);
+  assert.equal(view.data().showInactiveUsers, false);
+  await view.actionToggleInactiveUsers();
+  assert.equal(state.calendarPlusViewSettings['view:grid'].showInactiveUsers, true);
+  assert.equal(state.calendarPlusViewSettings['view:other'].showInactiveUsers, true);
+  assert.equal(view.data().showInactiveUsers, true);
+  assert.equal(saves[0].options.patch, true);
+  assert.equal(saves[0].options.wait, true);
+  assert.equal(parent.refreshes, 1);
+  await view.actionToggleInactiveUsers();
+  assert.equal(state.calendarPlusViewSettings['view:grid'].showInactiveUsers, false);
+  assert.equal(state.calendarViewDataList.length, 1);
+  const anotherUser = inactiveMenuFixture();
+  assert.equal(anotherUser.view.data().showInactiveUsers, false);
+});
+
+test('default Timeline has its own inactive toggle and failed saves restore the previous setting', async () => {
+  const current = inactiveMenuFixture({}, 'timeline');
+  await current.view.actionToggleInactiveUsers();
+  assert.equal(current.state.calendarPlusViewSettings.timeline.showInactiveUsers, true);
+  assert.equal(current.state.calendarPlusViewSettings['view:grid'], undefined);
+  const previous = {'view:grid': {showInactiveUsers: true}};
+  const failed = inactiveMenuFixture({calendarPlusViewSettings: previous}, 'view-grid', true);
+  await failed.view.actionToggleInactiveUsers();
+  assert.equal(failed.state.calendarPlusViewSettings, previous);
+  assert.equal(failed.parent.refreshes, undefined);
+  assert.equal(failed.errors.length, 1);
+});
+
+test('inactive toggles are unavailable for personal views or calendar users without shared-view permission', async () => {
+  const {view, saves} = inactiveMenuFixture({}, 'agendaWeek');
+  assert.equal(!!view.data().inactiveUsersAvailable, false);
+  await view.actionToggleInactiveUsers();
+  view.mode = 'view-grid';
+  view.isCustomViewAvailable = false;
+  await view.actionToggleInactiveUsers();
+  assert.equal(saves.length, 0);
+});
+
+test('inactive-user choice follows a saved calendar ID across type changes and stays outside its membership dialog', () => {
+  const {editor, state} = fixture({id: 'grid', source: 'calendar'});
+  state.calendarPlusViewSettings = {'view:grid': {showInactiveUsers: true}};
+  editor.setup();
+  assert.equal(editor.model.attributes.showInactiveUsers, true);
+  const rows = editor.recordView.options.detailLayout[0].rows;
+  assert.equal(rows.some(row => row.some(cell => cell && cell.view.options.name === 'showInactiveUsers')), false);
+  state.calendarViewDataList = [];
+  state.calendarPlusList = [{id: 'grid', name: 'Timeline'}];
+  assert.equal(definitions.showInactiveUsers(editor.getPreferences(), 'view-timeline-grid'), true);
+  const template = readFileSync(new URL('../res/templates/calendar/mode-buttons.tpl', root), 'utf8');
+  assert.equal(template.includes('data-action="toggleInactiveUsers"'), true);
+});
+
+test('calendar user picker includes inactive internal users only when enabled without losing team filters', () => {
+  class Users { getSelectPrimaryFilterName() { return 'active'; } getSelectBoolFilterList() { return ['onlyMyTeam']; } }
+  const Picker = load('views/calendar/fields/users.js', {'crm:views/calendar/fields/users': Users});
+  const picker = new Picker();
+  let enabled = false;
+  picker.model = {get: () => enabled};
+  assert.equal(picker.getSelectPrimaryFilterName(), 'active');
+  enabled = true;
+  assert.equal(picker.getSelectPrimaryFilterName(), 'internal');
+  assert.deepEqual(picker.getSelectBoolFilterList(), ['onlyMyTeam']);
+});
+
+
+test('inactive-user menu toggle supports Enter and Space without activating on unrelated keys', () => {
+  const {view} = inactiveMenuFixture();
+  let toggles = 0;
+  view.actionToggleInactiveUsers = () => toggles++;
+  for (const key of ['Enter', ' ', 'Escape']) {
+    view.events['keydown [data-action="toggleInactiveUsers"]'].call(view, {key, preventDefault() {}, stopPropagation() {}});
+  }
+  assert.equal(toggles, 2);
+});
+
+
+test('new and existing calendars default to dynamic membership and expose the static option', () => {
+  for (const item of [null, {id: 'grid', name: 'Existing', source: 'calendar'}]) {
+    const {editor} = fixture(item);
+    editor.setup();
+    assert.equal(editor.model.attributes.membershipMode, 'dynamic');
+    const row = editor.recordView.options.detailLayout[0].rows.find(row => row[0].view.options.name === 'membershipMode');
+    assert.deepEqual(Array.from(row[0].view.options.params.options), ['dynamic', 'static']);
+  }
+});
+
+test('every calendar type captures a deduplicated static list including inactive members when saved', async () => {
+  for (const mode of ['agendaDay', 'agendaWeek', 'month', 'timeline']) {
+    const {editor, state, espo} = fixture();
+    const calls = [];
+    espo.Ajax = {postRequest: async (url, body) => {
+      calls.push({url, body});
+      return {users: [{id: 'ann'}, {id: 'former'}, {id: 'bob'}, {id: 'bob'}]};
+    }};
+    editor.setup();
+    Object.assign(editor.model.attributes, {name: 'Static calendar', mode, teamsIds: ['team'], usersIds: ['bob'], membershipMode: 'static'});
+    await editor.actionSave();
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, 'CalendarPlus/Users');
+    assert.deepEqual(JSON.parse(JSON.stringify(calls[0].body)), {teamIdList: ['team'], userIdList: ['bob'], includeInactiveUsers: true});
+    const stored = state.calendarViewDataList.find(item => item.name === 'Static calendar');
+    assert.equal(stored.membershipMode, 'static');
+    assert.deepEqual(Array.from(stored.staticUserIdList), ['ann', 'former', 'bob']);
+    assert.deepEqual(Array.from(stored.teamIdList), ['team']);
+    assert.deepEqual(Array.from(stored.userIdList), ['bob']);
+    assert.equal(state.closed, true);
+  }
+});
+
+test('default Timeline can capture static membership and switch back to dynamic without stale snapshot data', async () => {
+  const {editor, state, espo} = fixture();
+  editor.options.calendar = {source: 'shared', routeMode: 'timeline', teamIdList: ['team'], userIdList: []};
+  espo.Ajax = {postRequest: async () => ({users: [{id: 'ann'}, {id: 'bob'}]})};
+  editor.setup();
+  editor.model.attributes.membershipMode = 'static';
+  await editor.actionSave();
+  assert.equal(state.calendarPlusSharedSelection.membershipMode, 'static');
+  assert.deepEqual(Array.from(state.calendarPlusSharedSelection.staticUserIdList), ['ann', 'bob']);
+  const shared = definitions.sharedTimeline(editor.getPreferences(), {id: 'me', get: () => 'Me'});
+  assert.deepEqual(JSON.parse(JSON.stringify(definitions.membershipSelection(shared))), {teamIdList: [], userIdList: ['ann', 'bob']});
+  editor.model.attributes.membershipMode = 'dynamic';
+  espo.Ajax.postRequest = async () => { throw new Error('Dynamic saves must not capture members'); };
+  await editor.actionSave();
+  assert.equal(state.calendarPlusSharedSelection.membershipMode, 'dynamic');
+  assert.equal(state.calendarPlusSharedSelection.staticUserIdList, undefined);
+  assert.equal(state.calendarViewDataList.length, 1);
+});
+
+test('failed static capture leaves preferences untouched and an empty resolved team remains an empty snapshot', async () => {
+  const {editor, state, espo} = fixture();
+  editor.setup();
+  Object.assign(editor.model.attributes, {name: 'Static calendar', teamsIds: ['empty-team'], membershipMode: 'static'});
+  const before = JSON.stringify(state.calendarViewDataList);
+  espo.Ajax = {postRequest: async () => { throw new Error('Failed'); }};
+  await editor.actionSave();
+  assert.equal(JSON.stringify(state.calendarViewDataList), before);
+  assert.equal(state.closed, undefined);
+  assert.equal(editor.saving, false);
+  espo.Ajax.postRequest = async () => ({users: []});
+  await editor.actionSave();
+  const stored = state.calendarViewDataList.find(item => item.name === 'Static calendar');
+  assert.equal(stored.membershipMode, 'static');
+  assert.deepEqual(Array.from(stored.staticUserIdList), []);
+  assert.deepEqual(JSON.parse(JSON.stringify(definitions.membershipSelection(stored))), {teamIdList: [], userIdList: []});
+});
+
+test('static saves reject unsupported snapshot sizes and ignore repeated Save clicks during capture', async () => {
+  const {editor, state, espo} = fixture();
+  editor.setup();
+  Object.assign(editor.model.attributes, {name: 'Static calendar', teamsIds: ['team'], membershipMode: 'static'});
+  let resolve;
+  let captures = 0;
+  espo.Ajax = {postRequest: () => { captures++; return new Promise(done => { resolve = done; }); }};
+  const pending = editor.actionSave();
+  await editor.actionSave();
+  assert.equal(captures, 1);
+  resolve({users: Array.from({length: 501}, (_, i) => ({id: `user-${i}`}))});
+  await pending;
+  assert.equal(state.calendarViewDataList.length, 1);
+  assert.equal(state.closed, undefined);
+  assert.equal(editor.saving, false);
+});
+
+test('saving an existing static calendar explicitly refreshes its captured users while preserving its identity and view settings', async () => {
+  const item = {id: 'grid', name: 'Static calendar', source: 'calendar', mode: 'agendaWeek', teamIdList: ['team'], userIdList: [], membershipMode: 'static', staticUserIdList: ['old-member']};
+  const {editor, state, espo} = fixture(item);
+  state.calendarViewDataList = [{...item}];
+  state.calendarPlusViewSettings = {'view:grid': {showInactiveUsers: true}};
+  editor.setup();
+  assert.equal(editor.model.attributes.membershipMode, 'static');
+  espo.Ajax = {postRequest: async () => ({users: [{id: 'current-member'}]})};
+  await editor.actionSave();
+  assert.equal(state.calendarViewDataList[0].id, 'grid');
+  assert.deepEqual(Array.from(state.calendarViewDataList[0].staticUserIdList), ['current-member']);
+  assert.equal(state.calendarPlusViewSettings['view:grid'].showInactiveUsers, true);
+});
+
+
+test('closing the calendar editor during static capture prevents saving a late response', async () => {
+  const {editor, state, espo} = fixture();
+  editor.setup();
+  Object.assign(editor.model.attributes, {name: 'Static calendar', teamsIds: ['team'], membershipMode: 'static'});
+  let resolve;
+  espo.Ajax = {postRequest: () => new Promise(done => { resolve = done; })};
+  const pending = editor.actionSave();
+  editor.onRemove();
+  resolve({users: [{id: 'ann'}]});
+  await pending;
+  assert.equal(state.calendarViewDataList.length, 1);
+  assert.equal(state.saved, undefined);
 });

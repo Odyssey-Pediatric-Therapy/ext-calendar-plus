@@ -21,5 +21,15 @@ define('calendar-plus:calendar-definitions', [], () => {
     }
     return {...selection, source: 'shared', name: 'Timeline', mode: 'timeline', routeMode: 'timeline'};
   };
-  return {list, normalizeMode, sharedTimeline, find: (preferences, routeMode) => list(preferences).find(item => item.routeMode === routeMode)};
+  const membershipSelection = item => item?.membershipMode === 'static' ?
+    {teamIdList: [], userIdList: Array.isArray(item.staticUserIdList) ? item.staticUserIdList : []} :
+    {teamIdList: item?.teamIdList || [], userIdList: item?.userIdList || []};
+  const find = (preferences, routeMode) => list(preferences).find(item => item.routeMode === routeMode);
+  const viewSettingsKey = (preferences, routeMode) => {
+    const item = find(preferences, routeMode);
+    return item ? `view:${item.id}` : routeMode;
+  };
+  const showInactiveUsers = (preferences, routeMode) =>
+    preferences.get('calendarPlusViewSettings')?.[viewSettingsKey(preferences, routeMode)]?.showInactiveUsers === true;
+  return {list, normalizeMode, sharedTimeline, find, viewSettingsKey, showInactiveUsers, membershipSelection};
 });

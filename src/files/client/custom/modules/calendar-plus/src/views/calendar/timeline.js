@@ -10,6 +10,9 @@ define('calendar-plus:views/calendar/timeline', [
       this.eventTooltip = new EventTooltip(this);
       this.calendarTypeList = ['single', 'shared', ...this.getTimelines().map(item => `saved-${item.id}`)];
       super.setup();
+      if (this.getConfig().get('calendarPlusTasksAllDay') === false) {
+        this.allDayScopeList = this.allDayScopeList.filter(scope => scope !== 'Task');
+      }
       if (!this.calendarTypeList.includes(this.calendarType) ||
           (!this.isCustomViewAvailable && this.calendarType.startsWith('saved-'))) {
         this.calendarType = 'single';
@@ -166,7 +169,8 @@ define('calendar-plus:views/calendar/timeline', [
       if (item) {
         try {
           const data = await Espo.Ajax.postRequest('CalendarPlus/Users', {
-            teamIdList: item.teamIdList || [], userIdList: item.userIdList || [],
+            ...Definitions.membershipSelection(item),
+            ...(Definitions.showInactiveUsers(this.getPreferences(), this.mode || item.routeMode || 'timeline') ? {includeInactiveUsers: true} : {}),
           });
           if (this.removed || revision !== this.fetchRevision) return;
           this.userList = data.users;

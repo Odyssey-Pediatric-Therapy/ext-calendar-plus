@@ -31,6 +31,15 @@
                 </a>
             </li>
         {{/each}}
+        {{#if inactiveUsersAvailable}}
+            <li class="divider" role="separator"></li>
+            <li>
+                <a role="menuitemcheckbox" tabindex="0" data-action="toggleInactiveUsers" aria-checked="{{#if showInactiveUsers}}true{{else}}false{{/if}}">
+                    <span class="fas fa-check filter-check-icon check-icon pull-right{{#unless showInactiveUsers}} hidden{{/unless}}" aria-hidden="true"></span>
+                    <div>{{translate 'Show inactive users' scope='Calendar'}}</div>
+                </a>
+            </li>
+        {{/if}}
         {{#if hasMoreItems}}
             <li class="divider"></li>
         {{/if}}

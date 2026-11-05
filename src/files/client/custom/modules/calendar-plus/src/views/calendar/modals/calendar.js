@@ -1,6 +1,6 @@
 define('calendar-plus:views/calendar/modals/calendar', [
   'views/modal', 'model', 'views/record/edit-for-modal', 'views/fields/varchar', 'views/fields/enum',
-  'crm:views/calendar/fields/users', 'crm:views/calendar/fields/teams', 'calendar-plus:calendar-definitions',
+  'calendar-plus:views/calendar/fields/users', 'crm:views/calendar/fields/teams', 'calendar-plus:calendar-definitions',
 ], (Modal, Model, Record, Varchar, Enum, Users, Teams, Definitions) => {
   return class extends Modal {
     className = 'dialog dialog-record';
@@ -12,8 +12,10 @@ define('calendar-plus:views/calendar/modals/calendar', [
     }
 
     setup() {
+      this.on('remove', () => { this.calendarEditorRemoved = true; });
       const item = this.options.calendar;
       const membershipOnly = item?.source === 'shared';
+      const routeMode = item?.routeMode || (item?.id ? `${item.source === 'timeline' ? 'view-timeline-' : 'view-'}${item.id}` : 'timeline');
       this.headerText = this.translate(membershipOnly ? 'Edit Timeline' : item ? 'Edit Calendar' : 'Create Calendar', 'labels', 'Calendar');
       this.buttonList = [
         {name: 'save', label: item ? 'Save' : 'Create', style: 'primary', onClick: () => this.actionSave()},
@@ -24,6 +26,8 @@ define('calendar-plus:views/calendar/modals/calendar', [
         name: item?.name || '', mode: Definitions.normalizeMode(item?.mode || 'agendaWeek'),
         usersIds: item?.userIdList || [], usersNames: item?.userNames || {},
         teamsIds: item?.teamIdList || [], teamsNames: item?.teamNames || {},
+        membershipMode: item?.membershipMode === 'static' ? 'static' : 'dynamic',
+        showInactiveUsers: !!item && Definitions.showInactiveUsers(this.getPreferences(), routeMode),
       }));
       this.model.name = 'CalendarView';
       const rows = [];
@@ -39,12 +43,19 @@ define('calendar-plus:views/calendar/modals/calendar', [
       rows.push(
         [{view: new Teams({name: 'teams', labelText: this.translate('teams', 'fields')})}, false],
         [{view: new Users({name: 'users', labelText: this.translate('users', 'fields')})}, false],
+        [{view: new Enum({name: 'membershipMode', labelText: this.translate('Calendar Membership', 'labels', 'Calendar'),
+          tooltipText: this.translate('Calendar Membership Help', 'messages', 'Calendar'),
+          params: {required: true, tooltip: true, options: ['dynamic', 'static'], translatedOptions: {
+            dynamic: this.translate('Dynamic Membership', 'labels', 'Calendar'),
+            static: this.translate('Static Membership', 'labels', 'Calendar'),
+          }}})}, false],
       );
       this.recordView = new Record({model: this.model, detailLayout: [{rows}]});
       this.assignView('record', this.recordView);
     }
 
     async actionSave() {
+      if (this.saving) return;
       const data = this.recordView.processFetch();
       if (this.recordView.validate()) return;
       const membershipOnly = this.options.calendar?.source === 'shared';
@@ -55,11 +66,42 @@ define('calendar-plus:views/calendar/modals/calendar', [
         Espo.Ui.error(this.translate('Select Calendar Members', 'messages', 'Calendar'));
         return;
       }
-      await this.persist({
+      const item = {
         id: membershipOnly ? undefined : this.options.calendar?.id || Math.random().toString(36).slice(2, 12), name: name.trim(), mode,
         userIdList: data.usersIds || [], userNames: data.usersNames || {},
         teamIdList: data.teamsIds || [], teamNames: data.teamsNames || {},
-      });
+        membershipMode: data.membershipMode === 'static' ? 'static' : 'dynamic',
+      };
+      this.saving = true;
+      this.disableButton('save');
+      this.disableButton('remove');
+      try {
+        if (item.membershipMode === 'static') {
+          // Capture inactive members too, so Show inactive users can reveal them later.
+          const {users} = await Espo.Ajax.postRequest('CalendarPlus/Users', {
+            teamIdList: item.teamIdList, userIdList: item.userIdList, includeInactiveUsers: true,
+          });
+          if (this.calendarEditorRemoved) return;
+          if (!Array.isArray(users) || users.some(user => !user || typeof user.id !== 'string' || !user.id || user.id.length > 100)) {
+            throw new Error('Invalid member response.');
+          }
+          item.staticUserIdList = [...new Set(users.map(user => user.id))];
+          if (item.staticUserIdList.length > 500) {
+            Espo.Ui.error(this.translate('Static Calendar Member Limit', 'messages', 'Calendar'));
+            this.enableButton('save');
+            this.enableButton('remove');
+            return;
+          }
+        }
+        await this.persist(item);
+      } catch (error) {
+        if (this.calendarEditorRemoved) return;
+        this.enableButton('save');
+        this.enableButton('remove');
+        Espo.Ui.error(this.translate('Could not capture calendar members', 'messages', 'Calendar'));
+      } finally {
+        this.saving = false;
+      }
     }
 
     async actionRemove() {
@@ -74,12 +116,15 @@ define('calendar-plus:views/calendar/modals/calendar', [
       const original = preferences.get(key);
       const previous = original ? Espo.Utils.cloneDeep(original) : original;
       const selection = {teamIdList: item.teamIdList, teamNames: item.teamNames,
-        userIdList: item.userIdList, userNames: item.userNames};
+        userIdList: item.userIdList, userNames: item.userNames,
+        membershipMode: item.membershipMode || 'dynamic',
+        ...(item.membershipMode === 'static' ? {staticUserIdList: item.staticUserIdList} : {})};
       try {
         await preferences.save({[key]: selection}, {patch: true});
       } catch (error) {
         preferences.set(key, previous);
         this.enableButton('save');
+        this.enableButton('remove');
         return;
       }
       this.options.onSave({...selection, source: 'shared', mode: 'timeline', routeMode: 'timeline'});

@@ -10,6 +10,11 @@
             "default": true,
             "tooltip": true
         },
+        "calendarPlusTasksAllDay": {
+            "type": "bool",
+            "default": true,
+            "tooltip": true
+        },
         "calendarPlusTimelineEventGap": {
             "type": "int",
             "min": 0,

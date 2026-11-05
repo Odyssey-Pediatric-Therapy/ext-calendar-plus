@@ -14,7 +14,7 @@ define('calendar-plus:views/admin/settings', ['views/settings/record/edit'], Set
     };
 
     setup() {
-      for (const name of ['calendarPlusTooltipEnabled', 'calendarPlusColorGradientEnabled']) {
+      for (const name of ['calendarPlusTooltipEnabled', 'calendarPlusColorGradientEnabled', 'calendarPlusTasksAllDay']) {
         if (this.model.get(name) == null) this.model.set(name, true);
       }
       if (this.model.get('calendarPlusTimelineEventGap') == null) this.model.set('calendarPlusTimelineEventGap', 0);

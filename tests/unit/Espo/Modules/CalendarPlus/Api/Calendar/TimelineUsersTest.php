@@ -98,4 +98,48 @@ final class TimelineUsersTest extends \PHPUnit\Framework\TestCase
     (new TimelineUsers($this->createMock(EntityManager::class), $this->acl(), $this->user('me', 'Me')))
       ->process($this->request(['teamIdList' => 'not-an-array']));
   }
+
+  public function testInactiveMembersCanBeResolvedWithoutBypassingCalendarPermissions(): void
+  {
+    $ann = $this->user('ann', 'Ann');
+    $former = $this->user('former', 'Former member');
+    $denied = $this->user('denied', 'Denied');
+    $teamBuilder = $this->createMock(RDBSelectBuilder::class);
+    $teamBuilder->method('join')->willReturnSelf();
+    $teamBuilder->method('where')->with(['teams.id' => ['team1']])->willReturnSelf();
+    $teamBuilder->method('find')->willReturn(new EntityCollection([$ann, $former, $denied]));
+    $explicitBuilder = $this->createMock(RDBSelectBuilder::class);
+    $explicitBuilder->method('find')->willReturn(new EntityCollection([$former]));
+    $repo = $this->createMock(RDBRepository::class);
+    $repo->method('distinct')->willReturn($teamBuilder);
+    $repo->method('where')->with(['id' => ['former']])->willReturn($explicitBuilder);
+    $manager = $this->createMock(EntityManager::class);
+    $manager->method('getRDBRepositoryByClass')->willReturn($repo);
+    $acl = $this->acl();
+    $acl->method('checkUserPermission')->willReturnCallback(fn($user) => $user !== $denied);
+    $response = (new TimelineUsers($manager, $acl, $this->user('me', 'Me')))->process($this->request([
+      'teamIdList' => ['team1'], 'userIdList' => ['former'], 'includeInactiveUsers' => true,
+    ]));
+    self::assertSame(['users' => [['id' => 'ann', 'name' => 'Ann'], ['id' => 'former', 'name' => 'Former member']]],
+      json_decode((string) $response->getBody(), true));
+  }
+
+  public function testMalformedInactiveOptionIsRejectedBeforeQuerying(): void
+  {
+    $manager = $this->createMock(EntityManager::class);
+    $manager->expects(self::never())->method('getRDBRepositoryByClass');
+    $this->expectException(BadRequest::class);
+    (new TimelineUsers($manager, $this->acl(), $this->user('me', 'Me')))->process($this->request([
+      'userIdList' => ['former'], 'includeInactiveUsers' => 'true',
+    ]));
+  }
+
+  public function testIncludingInactiveUsersDoesNotGrantAccessToOtherTeams(): void
+  {
+    $user = $this->user('me', 'Me');
+    $user->method('getLinkMultipleIdList')->willReturn(['my-team']);
+    $this->expectException(Forbidden::class);
+    (new TimelineUsers($this->createMock(EntityManager::class), $this->acl('team'), $user))
+      ->process($this->request(['teamIdList' => ['other-team'], 'includeInactiveUsers' => true]));
+  }
 }

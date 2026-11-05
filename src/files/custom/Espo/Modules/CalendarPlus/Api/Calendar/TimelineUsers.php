@@ -29,6 +29,11 @@ class TimelineUsers implements Action
     $data = $request->getParsedBody();
     $teamIds = $data->teamIdList ?? [];
     $userIds = $data->userIdList ?? [];
+    $includeInactive = $data->includeInactiveUsers ?? false;
+    if (!is_bool($includeInactive)) {
+      throw new BadRequest('Invalid inactive user option.');
+    }
+    $activeFilter = $includeInactive ? [] : ['isActive' => true];
     foreach ([$teamIds, $userIds] as $ids) {
       if (!is_array($ids) || count($ids) > 500) {
         throw new BadRequest('Invalid selection.');
@@ -47,7 +52,7 @@ class TimelineUsers implements Action
     $users = [];
     if ($userIds) {
       foreach ($this->entityManager->getRDBRepositoryByClass(User::class)
-        ->where(['id' => $userIds, 'isActive' => true])->find() as $user) {
+        ->where(['id' => $userIds, ...$activeFilter])->find() as $user) {
         if ($this->acl->checkUserPermission($user, 'userCalendar')) {
           $users[$user->getId()] = ['id' => $user->getId(), 'name' => $user->get('name')];
         }
@@ -55,7 +60,7 @@ class TimelineUsers implements Action
     }
     if ($teamIds) {
       foreach ($this->entityManager->getRDBRepositoryByClass(User::class)->distinct()->join('teams')
-        ->where(['teams.id' => $teamIds, 'isActive' => true])->find() as $user) {
+        ->where(['teams.id' => $teamIds, ...$activeFilter])->find() as $user) {
         if ($this->acl->checkUserPermission($user, 'userCalendar')) {
           $users[$user->getId()] = ['id' => $user->getId(), 'name' => $user->get('name')];
         }

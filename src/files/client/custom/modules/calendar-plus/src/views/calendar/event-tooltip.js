@@ -50,7 +50,7 @@ define('calendar-plus:views/calendar/event-tooltip', [], () => {
     }
 
     scheduleShow(anchor) {
-      if (!this.enabled() || this.view.reassignmentDrag) { this.hide(); return; }
+      if (!this.enabled() || this.view.personDropDrag) { this.hide(); return; }
       this.hide();
       this.pendingAnchor = anchor;
       this.showTimer = setTimeout(() => { void this.show(anchor); }, this.showDelay());
@@ -81,7 +81,7 @@ define('calendar-plus:views/calendar/event-tooltip', [], () => {
     async show(anchor) {
       this.hide();
       const appearance = this.view.eventAppearances.get(anchor);
-      if (!this.enabled() || !appearance || this.view.sharedRemoved || this.view.removed || this.view.reassignmentDrag) return;
+      if (!this.enabled() || !appearance || this.view.sharedRemoved || this.view.removed || this.view.personDropDrag) return;
       const event = appearance.event;
       if (!event.extendedProps.scope || event.display === 'inverse-background') return;
       const panel = document.createElement('div');

@@ -13,7 +13,9 @@
                 {
                     "name": "calendarPlusColorGradientEnabled"
                 },
-                false
+                {
+                    "name": "calendarPlusTasksAllDay"
+                }
             ],
             [
                 {

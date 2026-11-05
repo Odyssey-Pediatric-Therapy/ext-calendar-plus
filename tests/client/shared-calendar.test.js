@@ -49,8 +49,9 @@ class BaseCalendar {
   getCalculatedHeight() { return 600; }
   actionRefresh() { this.refreshes = (this.refreshes || 0) + 1; }
   updateDate() {}
+  handleScrollToNow() { this.scrolledToNow = true; }
 }
-function fixture(savedMode = 'basicDay') {
+function fixture(savedMode = 'basicDay', tasksAllDay) {
   let View;
   const document = {body: new Element(), documentElement: {clientWidth: 900, clientHeight: 800},
     createElement: () => new Element(), createTextNode: text => ({textContent: text}),
@@ -71,6 +72,10 @@ function fixture(savedMode = 'basicDay') {
       ];
     },
   }, Ui: {notifyWait() {}, notify() {}, error() {}}};
+  let definitions;
+  vm.runInNewContext(readFileSync(new URL('../../src/files/client/custom/modules/calendar-plus/src/calendar-definitions.js', import.meta.url), 'utf8'), {
+    define: (name, deps, factory) => { definitions = factory(); },
+  });
   let colors;
   vm.runInNewContext(readFileSync(new URL('../../src/files/client/custom/modules/calendar-plus/src/calendar-colors.js', import.meta.url), 'utf8'), {
     define: (name, dependencies, factory) => { colors = factory(); },
@@ -80,10 +85,11 @@ function fixture(savedMode = 'basicDay') {
     define: (name, dependencies, factory) => { EventTooltip = factory(); }, document, setTimeout, clearTimeout,
   });
   vm.runInNewContext(readFileSync(new URL('../../src/files/client/custom/modules/calendar-plus/src/views/calendar/calendar.js', import.meta.url), 'utf8'), {
-    define: (name, dependencies, factory) => { View = factory(BaseCalendar, {Calendar: FakeCalendar}, colors, EventTooltip); },
+    define: (name, dependencies, factory) => { View = factory(BaseCalendar, {Calendar: FakeCalendar}, colors, EventTooltip, definitions); },
     Espo: espo, document, queueMicrotask,
   });
   const view = new View();
+  view.allDayScopeList = ['Task', 'Meeting'];
   view.mode = 'view-saved';
   view.savedMode = savedMode;
   view.options = {};
@@ -92,7 +98,7 @@ function fixture(savedMode = 'basicDay') {
   view.extendedProps = [];
   view.enabledScopeList = ['Meeting'];
   view.translate = value => value;
-  const config = {};
+  const config = {calendarPlusTasksAllDay: tasksAllDay};
   view.getConfig = () => ({get: name => config[name]});
   view.getDateTime = () => ({toDisplay: value => value || '', toDisplayDate: value => value || '', getTimeZone: () => 'America/Denver'});
   const storage = {};
@@ -109,6 +115,11 @@ function fixture(savedMode = 'basicDay') {
   };
   return {view, calls, espo, document, config};
 }
+
+test('task all-day configuration is honored without changing the default', () => {
+  assert.deepEqual(Array.from(fixture().view.allDayScopeList), ['Task', 'Meeting']);
+  assert.deepEqual(Array.from(fixture('basicDay', false).view.allDayScopeList), ['Meeting']);
+});
 
 test('existing saved shared day/week modes become timed layouts; month uses the shared member filters', () => {
   assert.equal(fixture('basicDay').view.viewMode, 'agendaDay');
@@ -349,16 +360,18 @@ test('individual-only calendars resolve members and deduplicate multi-person act
   assert.deepEqual(Array.from(result[0].calendarUserIds), ['ann', 'bob']);
 });
 
-function reassignmentFixture(mode = 'basicDay') {
+function personDropFixture(mode = 'basicDay') {
   const result = fixture(mode);
   const {view} = result;
-  const record = {assignedUserId: 'ann', usersIds: ['guest']};
+  const record = {assignedUserId: 'ann', usersIds: ['guest'], usersColumns: {guest: {status: 'Accepted'}}, contactsIds: ['contact'], leadsIds: ['lead']};
   const saves = [];
   const access = {edit: true, fields: true};
-  const model = {id: null, fetch: async () => {}, save: async (attributes, options) => {
+  const model = {id: null, get: name => record[name], fetch: async () => {}, save: async (attributes, options) => {
     saves.push({attributes, options}); Object.assign(record, attributes);
   }};
-  view.getMetadata = () => ({get: () => ({type: 'link'})});
+  const fields = {assignedUser: {type: 'link'}, users: {type: 'linkMultiple'}, dateStart: {type: 'datetime'}, dateEnd: {type: 'datetime'}};
+  view.getMetadata = () => ({get: path => path[2] === 'fields' ? fields[path[3]] :
+    path[2] === 'links' && ['users', 'collaborators'].includes(path[3]) && fields[path[3]] ? {entity: 'User', type: 'hasMany'} : undefined});
   view.getAcl = () => ({checkModel: () => access.edit, checkField: () => access.fields});
   view.getModelFactory = () => ({create: async () => model});
   view.convertDateTime = value => value;
@@ -367,7 +380,7 @@ function reassignmentFixture(mode = 'basicDay') {
     return {add(delta) { date = new Date(date.getTime() + delta); return this; },
       format() { return date.toISOString().slice(0, 19).replace('T', ' '); }};
   }});
-  return {...result, record, saves, access, model};
+  return {...result, record, saves, access, model, fields};
 }
 function draggedEvent(changes = {}) {
   return {id: 'Meeting-record', allDay: false, start: new Date('2026-11-04T09:00:00Z'),
@@ -376,26 +389,31 @@ function draggedEvent(changes = {}) {
     ...changes};
 }
 
-test('week reassignment changes only the assignee and never adds the previous assignee as an attendee', async () => {
-  const {view, record, saves} = reassignmentFixture('basicWeek');
+test('week drop adds an attendee without changing the assignee or existing participants and statuses', async () => {
+  const {view, record, saves} = personDropFixture('basicWeek');
   await view.fetchEvents('from', 'to', () => {});
-  assert.equal(await view.reassignEvent(draggedEvent(), 'bob'), true);
-  assert.deepEqual(JSON.parse(JSON.stringify(saves[0].attributes)), {assignedUserId: 'bob'});
+  assert.equal(await view.dropEventOnPerson(draggedEvent(), 'bob'), true);
+  assert.deepEqual(JSON.parse(JSON.stringify(saves[0].attributes)), {usersIds: ['guest', 'bob']});
   assert.equal(saves[0].options.patch, true);
-  assert.deepEqual(record.usersIds, ['guest']);
+  assert.deepEqual(Array.from(record.usersIds), ['guest', 'bob']);
+  assert.equal(record.assignedUserId, 'ann');
+  assert.deepEqual(record.usersColumns, {guest: {status: 'Accepted'}});
+  assert.deepEqual(record.contactsIds, ['contact']);
+  assert.deepEqual(record.leadsIds, ['lead']);
   assert.equal(view.refreshes, 1);
 });
 
-test('reassignment preserves the original assignee when already in the attendee list', async () => {
-  const {view, record} = reassignmentFixture('basicWeek');
+test('adding an attendee retains the assignee when already attending', async () => {
+  const {view, record} = personDropFixture('basicWeek');
   record.usersIds = ['ann', 'guest'];
   await view.fetchEvents('from', 'to', () => {});
-  await view.reassignEvent(draggedEvent(), 'bob');
-  assert.deepEqual(record.usersIds, ['ann', 'guest']);
+  await view.dropEventOnPerson(draggedEvent(), 'bob');
+  assert.deepEqual(Array.from(record.usersIds), ['ann', 'guest', 'bob']);
+  assert.equal(record.assignedUserId, 'ann');
 });
 
-test('cross-column Day drop saves reassignment and new times in a single update', async () => {
-  const {view, record, saves} = reassignmentFixture();
+test('cross-column Day drop adds the attendee and saves new times in a single update', async () => {
+  const {view, record, saves} = personDropFixture();
   await view.fetchEvents('from', 'to', () => {});
   const source = view.dayCalendars[0].calendar;
   const target = view.dayCalendars[1].calendar;
@@ -410,13 +428,17 @@ test('cross-column Day drop saves reassignment and new times in a single update'
   assert.equal(target.options.droppable, true);
   assert.equal(saves.length, 1);
   assert.deepEqual(JSON.parse(JSON.stringify(saves[0].attributes)), {
-    assignedUserId: 'bob', dateStart: '2026-11-04 11:00:00', dateEnd: '2026-11-04 12:00:00',
+    usersIds: ['guest', 'bob'], dateStart: '2026-11-04 11:00:00', dateEnd: '2026-11-04 12:00:00',
   });
-  assert.deepEqual(record.usersIds, ['guest']);
+  assert.deepEqual(Array.from(record.usersIds), ['guest', 'bob']);
+  assert.equal(record.assignedUserId, 'ann');
+  assert.deepEqual(record.usersColumns, {guest: {status: 'Accepted'}});
+  assert.deepEqual(record.contactsIds, ['contact']);
+  assert.deepEqual(record.leadsIds, ['lead']);
 });
 
-test('failed Day reassignment restores both the source and destination calendars', async () => {
-  const {view, model, record} = reassignmentFixture();
+test('failed Day attendee addition restores both the source and destination calendars', async () => {
+  const {view, model, record} = personDropFixture();
   await view.fetchEvents('from', 'to', () => {});
   model.save = async () => { throw new Error('Forbidden'); };
   const source = view.dayCalendars[0].calendar;
@@ -434,41 +456,41 @@ test('failed Day reassignment restores both the source and destination calendars
 });
 
 test('week legend drop uses the pointer target and preserves the event time', async () => {
-  const {view, document} = reassignmentFixture('basicWeek');
+  const {view, document} = personDropFixture('basicWeek');
   await view.fetchEvents('from', 'to', () => {});
   const button = view.legendButtons.get('bob').button;
   button.bounds = {left: 100, right: 200, top: 10, bottom: 40};
   const event = draggedEvent();
   let assigned;
-  view.reassignEvent = async (...args) => { assigned = args; };
-  view.startReassignmentDrag({event}, view.calendar);
+  view.dropEventOnPerson = async (...args) => { assigned = args; };
+  view.startPersonDropDrag({event}, view.calendar);
   document.listeners.get('pointermove')({clientX: 150, clientY: 20});
-  assert.equal(button.classes.has('cp-person-reassignment-target'), true);
-  view.stopReassignmentDrag({event, jsEvent: {clientX: 150, clientY: 20}});
+  assert.equal(button.classes.has('cp-person-drop-target'), true);
+  view.stopPersonDropDrag({event, jsEvent: {clientX: 150, clientY: 20}});
   await Promise.resolve();
   assert.equal(assigned[0], event);
   assert.equal(assigned[1], 'bob');
   assert.equal(assigned[2], undefined, 'legend drops never request a time change');
   assert.equal(document.listeners.size, 0);
-  assert.equal(button.classes.has('cp-person-reassignment-target'), false);
+  assert.equal(button.classes.has('cp-person-drop-target'), false);
 });
 
-test('permission failures and recipients outside the shared view never save assignment changes', async () => {
-  const {view, saves, access} = reassignmentFixture();
+test('permission failures and recipients outside the shared view never change attendees or assignment', async () => {
+  const {view, saves, access} = personDropFixture();
   await view.fetchEvents('from', 'to', () => {});
   let reverted = 0;
   access.edit = false;
-  assert.equal(await view.reassignEvent(draggedEvent(), 'bob', {revert: () => reverted++}), false);
+  assert.equal(await view.dropEventOnPerson(draggedEvent(), 'bob', {revert: () => reverted++}), false);
   access.edit = true;
   access.fields = false;
-  assert.equal(await view.reassignEvent(draggedEvent(), 'bob', {revert: () => reverted++}), false);
-  assert.equal(await view.reassignEvent(draggedEvent(), 'outside', {revert: () => reverted++}), false);
+  assert.equal(await view.dropEventOnPerson(draggedEvent(), 'bob', {revert: () => reverted++}), false);
+  assert.equal(await view.dropEventOnPerson(draggedEvent(), 'outside', {revert: () => reverted++}), false);
   assert.equal(saves.length, 0);
   assert.equal(reverted, 3);
 });
 
 test('all-day moves preserve inclusive dates and timed multi-day events retain their original clock times', () => {
-  const {view} = reassignmentFixture();
+  const {view} = personDropFixture();
   const allDay = draggedEvent({allDay: true, start: new Date('2026-11-04T00:00:00Z'), startStr: '2026-11-04', endStr: '2026-11-07',
     extendedProps: {dateStartDate: '2026-11-04', dateEndDate: '2026-11-06'}});
   assert.deepEqual(JSON.parse(JSON.stringify(view.movedEventDates(allDay, allDay))), {
@@ -481,28 +503,28 @@ test('all-day moves preserve inclusive dates and timed multi-day events retain t
   });
 });
 
-test('Day reassignment checks date-field permission before saving any part of the move', async () => {
-  const {view, saves, record} = reassignmentFixture();
+test('Day participant drops check date-field permission before saving any part of the move', async () => {
+  const {view, saves, record} = personDropFixture();
   await view.fetchEvents('from', 'to', () => {});
   view.getAcl = () => ({checkModel: () => true, checkField: (scope, field) => field !== 'dateStart'});
   let reverted = false;
   const event = draggedEvent();
-  const saved = await view.reassignEvent(event, 'bob', {moveTime: true, originalEvent: event, revert() { reverted = true; }});
+  const saved = await view.dropEventOnPerson(event, 'bob', {moveTime: true, originalEvent: event, revert() { reverted = true; }});
   assert.equal(saved, false);
   assert.equal(reverted, true);
   assert.equal(saves.length, 0);
   assert.equal(record.assignedUserId, 'ann');
 });
 
-test('a second drop cannot submit a concurrent reassignment for the same record', async () => {
-  const {view, model, saves} = reassignmentFixture('basicWeek');
+test('a second drop cannot submit a concurrent participant update for the same record', async () => {
+  const {view, model, saves} = personDropFixture('basicWeek');
   await view.fetchEvents('from', 'to', () => {});
   let release;
   model.fetch = () => new Promise(resolve => { release = resolve; });
-  const first = view.reassignEvent(draggedEvent(), 'bob');
+  const first = view.dropEventOnPerson(draggedEvent(), 'bob');
   await Promise.resolve();
   let reverted = false;
-  assert.equal(await view.reassignEvent(draggedEvent(), 'ann', {revert() { reverted = true; }}), false);
+  assert.equal(await view.dropEventOnPerson(draggedEvent(), 'ann', {revert() { reverted = true; }}), false);
   release();
   assert.equal(await first, true);
   assert.equal(reverted, true);
@@ -814,4 +836,234 @@ test('Task tooltips omit calendar-user fallback and only show actual collaborato
   assert.equal(summary.rows.find(row => row.label === 'collaborators').value, 'Bob, Maya');
   assert.equal(summary.rows.find(row => row.label === 'assignedUser').value, 'Ann');
   assert.equal(summary.rows.some(row => row.label === 'Calendar users'), false);
+});
+
+
+test('shared Day initially scrolls to the configured hour after its empty loading placeholder', async () => {
+  for (const hour of [0, 7, 9, 14]) {
+    const {view} = fixture();
+    view.scrollHour = hour;
+    view.renderDayColumns();
+    view.dayColumnsElement.scrollTop = 0;
+    const create = view.createDayColumn.bind(view);
+    view.createDayColumn = user => {
+      create(user);
+      const container = view.dayColumnsElement;
+      container.scrollTop = 0;
+      container.getBoundingClientRect = () => ({top: 100});
+      container.querySelector = selector => {
+        if (selector === 'section > div:first-child') return {getBoundingClientRect: () => ({height: 44})};
+        assert.equal(selector, `[data-time="${String(hour).padStart(2, '0')}:00:00"]`);
+        return {getBoundingClientRect: () => ({top: 100 + 44 + 80 + hour * 96 - container.scrollTop})};
+      };
+    };
+    view.sharedUsers = [{id: 'ann', name: 'Ann'}, {id: 'bob', name: 'Bob'}];
+    view.renderDayColumns();
+    await Promise.resolve();
+    assert.equal(view.dayColumnsElement.scrollTop, 80 + hour * 96);
+    view.dayColumnsElement.scrollTop = 123;
+    view.renderDayColumns();
+    await Promise.resolve();
+    assert.equal(view.dayColumnsElement.scrollTop, 123, 'refresh on the same date preserves manual scrolling');
+    view.hiddenUserIds.add('bob');
+    view.renderDayColumns();
+    await Promise.resolve();
+    assert.equal(view.dayColumnsElement.scrollTop, 123, 'changing visible people preserves manual scrolling');
+    view.calendar.getDate = () => '2026-11-06';
+    view.renderDayColumns();
+    await Promise.resolve();
+    assert.equal(view.dayColumnsElement.scrollTop, 80 + hour * 96, 'a new date uses the configured hour again');
+  }
+});
+
+test('an explicit scroll hour takes priority over automatic scrolling toward the current time', () => {
+  const {view} = fixture('agendaWeek');
+  for (const hour of [0, 9, 14]) {
+    view.scrolledToNow = false;
+    view.getPreferences = () => ({get: () => hour});
+    view.handleScrollToNow();
+    assert.equal(view.scrolledToNow, false);
+  }
+  view.getPreferences = () => ({get: () => null});
+  view.handleScrollToNow();
+  assert.equal(view.scrolledToNow, true);
+});
+
+
+test('empty attendee lists still add the dropped person without changing the assignee', async () => {
+  const {view, record, saves} = personDropFixture('basicWeek');
+  record.usersIds = [];
+  await view.fetchEvents('from', 'to', () => {});
+  assert.equal(await view.dropEventOnPerson(draggedEvent(), 'bob'), true);
+  assert.deepEqual(Array.from(record.usersIds), ['bob']);
+  assert.equal(record.assignedUserId, 'ann');
+  assert.equal(saves[0].attributes.assignedUserId, undefined);
+});
+
+test('entities without attendee or collaborator fields reassign the event instead', async () => {
+  for (const scope of ['CAppointment', 'CWorkBlock']) {
+    const {view, record, saves, fields} = personDropFixture('basicWeek');
+    delete fields.users;
+    delete record.usersIds;
+    await view.fetchEvents('from', 'to', () => {});
+    const event = draggedEvent();
+    event.extendedProps.scope = scope;
+    assert.equal(await view.dropEventOnPerson(event, 'bob'), true);
+    assert.deepEqual(JSON.parse(JSON.stringify(saves[0].attributes)), {assignedUserId: 'bob'});
+    assert.equal(record.assignedUserId, 'bob');
+    assert.equal(record.usersIds, undefined);
+  }
+});
+
+test('attendee drops support Meetings, Calls, and custom event attendee fields even with a read-only assignee', async () => {
+  for (const scope of ['Meeting', 'Call', 'CWorkshop']) {
+    const {view, record, fields} = personDropFixture('basicWeek');
+    fields.assignedUser.readOnly = true;
+    await view.fetchEvents('from', 'to', () => {});
+    const event = draggedEvent();
+    event.extendedProps.scope = scope;
+    assert.equal(await view.dropEventOnPerson(event, 'bob'), true);
+    assert.equal(record.assignedUserId, 'ann');
+    assert.deepEqual(Array.from(record.usersIds), ['guest', 'bob']);
+  }
+});
+
+test('dropping onto an existing attendee does not duplicate them or reset their response', async () => {
+  const {view, record, saves} = personDropFixture('basicWeek');
+  record.usersIds = ['guest', 'bob'];
+  record.usersColumns.bob = {status: 'Declined'};
+  await view.fetchEvents('from', 'to', () => {});
+  assert.equal(await view.dropEventOnPerson(draggedEvent(), 'bob'), true);
+  assert.equal(saves.length, 0);
+  assert.deepEqual(record.usersIds, ['guest', 'bob']);
+  assert.equal(record.usersColumns.bob.status, 'Declined');
+  assert.equal(record.assignedUserId, 'ann');
+});
+
+test('unreadable or non-editable attendee lists reject the drop without falling back to reassignment', async () => {
+  for (const mode of ['readOnly', 'acl', 'missing']) {
+    const {view, record, saves, fields} = personDropFixture('basicWeek');
+    if (mode === 'readOnly') fields.users.readOnly = true;
+    if (mode === 'acl') view.getAcl = () => ({checkModel: () => true, checkField: (scope, field) => field !== 'users'});
+    if (mode === 'missing') delete record.usersIds;
+    await view.fetchEvents('from', 'to', () => {});
+    let reverted = false;
+    assert.equal(await view.dropEventOnPerson(draggedEvent(), 'bob', {revert: () => { reverted = true; }}), false);
+    assert.equal(reverted, true);
+    assert.equal(saves.length, 0);
+    assert.equal(record.assignedUserId, 'ann');
+  }
+});
+
+
+test('Task and custom event drops append collaborators when there is no attendee field', async () => {
+  for (const scope of ['Task', 'CWorkSession']) for (const current of [[], ['existing']]) {
+    const {view, record, saves, fields} = personDropFixture('basicWeek');
+    delete fields.users;
+    fields.collaborators = {type: 'linkMultiple'};
+    record.collaboratorsIds = [...current];
+    await view.fetchEvents('from', 'to', () => {});
+    const event = draggedEvent();
+    event.extendedProps.scope = scope;
+    view.startPersonDropDrag({event}, view.calendar);
+    assert.equal(view.legendButtons.get('bob').button.title.includes('Drop to add collaborator'), true);
+    view.finishPersonDropDrag();
+    assert.equal(await view.dropEventOnPerson(event, 'bob'), true);
+    assert.deepEqual(Array.from(record.collaboratorsIds), [...current, 'bob']);
+    assert.equal(record.assignedUserId, 'ann');
+    assert.equal(saves[0].attributes.assignedUserId, undefined);
+    assert.equal(saves[0].attributes.usersIds, undefined);
+    assert.deepEqual(record.usersIds, ['guest']);
+  }
+});
+
+test('attendees take priority when the entity also supports collaborators', async () => {
+  const {view, record, saves, fields} = personDropFixture('basicWeek');
+  fields.collaborators = {type: 'linkMultiple'};
+  record.collaboratorsIds = ['coworker'];
+  await view.fetchEvents('from', 'to', () => {});
+  await view.dropEventOnPerson(draggedEvent(), 'bob');
+  assert.deepEqual(Array.from(record.usersIds), ['guest', 'bob']);
+  assert.deepEqual(record.collaboratorsIds, ['coworker']);
+  assert.equal(saves[0].attributes.collaboratorsIds, undefined);
+  assert.equal(record.assignedUserId, 'ann');
+});
+
+test('Day collaborator drops save participants and time together and avoid duplicating existing collaborators', async () => {
+  const {view, record, saves, fields} = personDropFixture();
+  delete fields.users;
+  fields.collaborators = {type: 'linkMultiple'};
+  record.collaboratorsIds = ['existing'];
+  await view.fetchEvents('from', 'to', () => {});
+  const original = draggedEvent();
+  const moved = draggedEvent({start: new Date('2026-11-04T11:00:00Z')});
+  moved.extendedProps.scope = 'Task';
+  assert.equal(await view.dropEventOnPerson(moved, 'bob', {moveTime: true, originalEvent: original}), true);
+  assert.deepEqual(JSON.parse(JSON.stringify(saves[0].attributes)), {
+    collaboratorsIds: ['existing', 'bob'], dateStart: '2026-11-04 11:00:00', dateEnd: '2026-11-04 12:00:00',
+  });
+  assert.equal(record.assignedUserId, 'ann');
+  assert.equal(await view.dropEventOnPerson(moved, 'bob'), true);
+  assert.equal(saves.length, 1);
+  assert.deepEqual(Array.from(record.collaboratorsIds), ['existing', 'bob']);
+});
+
+test('collaborator permission failures never fall back to reassignment', async () => {
+  for (const mode of ['readOnly', 'acl', 'missing']) {
+    const {view, record, saves, fields} = personDropFixture('basicWeek');
+    delete fields.users;
+    fields.collaborators = {type: 'linkMultiple'};
+    record.collaboratorsIds = [];
+    if (mode === 'readOnly') fields.collaborators.readOnly = true;
+    if (mode === 'acl') view.getAcl = () => ({checkModel: () => true, checkField: (scope, name) => name !== 'collaborators'});
+    if (mode === 'missing') delete record.collaboratorsIds;
+    await view.fetchEvents('from', 'to', () => {});
+    let reverted = false;
+    assert.equal(await view.dropEventOnPerson(draggedEvent(), 'bob', {revert: () => { reverted = true; }}), false);
+    assert.equal(reverted, true);
+    assert.equal(saves.length, 0);
+    assert.equal(record.assignedUserId, 'ann');
+  }
+});
+
+
+test('Day, Week, and Month resolve inactive members only for the selected view when its top-level toggle is enabled', async () => {
+  for (const mode of ['basicDay', 'basicWeek', 'month']) {
+    const {view, calls} = fixture(mode);
+    const values = {calendarViewDataList: [{id: 'saved', name: 'Demo', mode}],
+      calendarPlusViewSettings: {'view:saved': {showInactiveUsers: true}}};
+    view.getPreferences = () => ({get: key => values[key]});
+    await view.fetchEvents('from', 'to', () => {});
+    assert.equal(calls[0].body.includeInactiveUsers, true);
+    values.calendarPlusViewSettings['view:saved'].showInactiveUsers = false;
+    await view.fetchEvents('from', 'to', () => {});
+    assert.equal(calls[2].body.includeInactiveUsers, undefined);
+  }
+});
+
+
+test('static Day, Week, and Month use only captured IDs while inactive visibility stays independent', async () => {
+  for (const mode of ['basicDay', 'basicWeek', 'month']) {
+    const {view, espo} = fixture(mode);
+    const item = {id: 'saved', name: 'Static view', mode, teamIdList: ['changed-team'], userIdList: ['new-user'], membershipMode: 'static', staticUserIdList: ['ann', 'former']};
+    const values = {calendarViewDataList: [item], calendarPlusViewSettings: {'view:saved': {showInactiveUsers: false}}};
+    view.getPreferences = () => ({get: key => values[key]});
+    const calls = [];
+    espo.Ajax.postRequest = async (url, body) => {
+      calls.push(body);
+      const all = body.userIdList.map(id => ({id, name: id}));
+      return {users: body.includeInactiveUsers ? all : all.filter(u => u.id !== 'former')};
+    };
+    await view.fetchEvents('from', 'to', () => {});
+    assert.deepEqual(JSON.parse(JSON.stringify(calls[0])), {teamIdList: [], userIdList: ['ann', 'former']});
+    assert.deepEqual(Array.from(view.sharedUsers, u => u.id), ['ann']);
+    values.calendarPlusViewSettings['view:saved'].showInactiveUsers = true;
+    item.teamIdList = ['another-team'];
+    await view.fetchEvents('from', 'to', () => {});
+    assert.deepEqual(JSON.parse(JSON.stringify(calls[1])), {teamIdList: [], userIdList: ['ann', 'former'], includeInactiveUsers: true});
+    assert.deepEqual(Array.from(view.sharedUsers, u => u.id), ['ann', 'former']);
+    item.staticUserIdList = [];
+    await view.fetchEvents('from', 'to', () => {});
+    assert.deepEqual(Array.from(view.sharedUsers), []);
+  }
 });

@@ -39,6 +39,7 @@ function fixture(list = []) {
   view.tooltipEvents = new Map();
   view.allowed = true;
   const config = {};
+  view.allDayScopeList = ['Task', 'Meeting'];
   view.getConfig = () => ({get: name => config[name]});
   const storage = {};
   view.getStorage = () => ({get: (category, key) => storage[key], set: (category, key, value) => { storage[key] = value; }});
@@ -52,6 +53,17 @@ function fixture(list = []) {
   return {view, espo, preferences, config};
 }
 const date = {clone() { return this; }, subtract() { return this; }, add() { return this; }};
+
+test('task all-day configuration is honored in Timeline without changing the default', () => {
+  const defaultView = fixture().view;
+  defaultView.setup();
+  assert.deepEqual(plain(defaultView.allDayScopeList), ['Task', 'Meeting']);
+
+  const {view, config} = fixture();
+  config.calendarPlusTasksAllDay = false;
+  view.setup();
+  assert.deepEqual(plain(view.allDayScopeList), ['Meeting']);
+});
 
 test('saved timelines extend the selector and retain named selection after setup', () => {
   const {view} = fixture([{id: 'a', name: 'Clinical Team'}, {id: 'b', name: 'Scheduling'}]);
@@ -315,5 +327,45 @@ test('Timeline gap rejects invalid values and stays within the supported range',
       view.timeline = {setOptions: value => { horizontal = value.margin.item.horizontal; }, setItems() {}, on() {}};
     });
     assert.equal(horizontal, expected);
+  }
+});
+
+
+test('saved and default Timelines forward their own per-view inactive-user setting on every refresh', async () => {
+  for (const saved of [false, true]) {
+    const {view, espo, preferences} = fixture(saved ? [{id: 'a', name: 'Team'}] : []);
+    view.setup();
+    view.mode = saved ? 'view-timeline-a' : 'timeline';
+    view.calendarType = saved ? 'saved-a' : 'shared';
+    const key = saved ? 'view:a' : 'timeline';
+    preferences.calendarPlusViewSettings = {[key]: {showInactiveUsers: true}};
+    const requests = [];
+    espo.Ajax.postRequest = async (url, body) => { requests.push(body); return {users: []}; };
+    await view.fetchEvents(date, date, () => {});
+    assert.equal(requests[0].includeInactiveUsers, true);
+    preferences.calendarPlusViewSettings[key].showInactiveUsers = false;
+    await view.fetchEvents(date, date, () => {});
+    assert.equal(requests[1].includeInactiveUsers, undefined);
+  }
+});
+
+
+test('static saved and default Timelines never re-expand teams and respect inactive visibility', async () => {
+  for (const saved of [false, true]) {
+    const selection = {id: 'a', name: 'Static timeline', teamIdList: ['changed-team'], userIdList: ['new-person'], membershipMode: 'static', staticUserIdList: ['ann', 'former']};
+    const {view, espo, preferences} = fixture(saved ? [selection] : []);
+    if (!saved) preferences.calendarPlusSharedSelection = selection;
+    view.setup();
+    view.mode = saved ? 'view-timeline-a' : 'timeline';
+    view.calendarType = saved ? 'saved-a' : 'shared';
+    const key = saved ? 'view:a' : 'timeline';
+    preferences.calendarPlusViewSettings = {[key]: {showInactiveUsers: false}};
+    const calls = [];
+    espo.Ajax.postRequest = async (url, body) => { calls.push(body); return {users: []}; };
+    await view.fetchEvents(date, date, () => {});
+    assert.deepEqual(plain(calls[0]), {teamIdList: [], userIdList: ['ann', 'former']});
+    preferences.calendarPlusViewSettings[key].showInactiveUsers = true;
+    await view.fetchEvents(date, date, () => {});
+    assert.deepEqual(plain(calls[1]), {teamIdList: [], userIdList: ['ann', 'former'], includeInactiveUsers: true});
   }
 });

@@ -78,11 +78,11 @@
     overflow-wrap: anywhere;
 }
 
-.cp-person-reassigning .cp-person-toggle {
+.cp-person-drop-active .cp-person-toggle {
     border-style: dashed;
 }
 
-.cp-person-reassigning .cp-person-toggle.cp-person-reassignment-target {
+.cp-person-drop-active .cp-person-toggle.cp-person-drop-target {
     opacity: 1 !important;
     outline: 3px solid var(--brand-primary, #2563a6);
     outline-offset: 2px;

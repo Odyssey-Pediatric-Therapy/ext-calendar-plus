@@ -18,7 +18,13 @@
         "Accepted": "Accepted",
         "Declined": "Declined",
         "Tentative": "Tentative",
-        "No answer": "No answer"
+        "No answer": "No answer",
+        "Drop to add attendee": "Drop to add attendee",
+        "Drop to add collaborator": "Drop to add collaborator",
+        "Show inactive users": "Show inactive users",
+        "Calendar Membership": "Membership",
+        "Dynamic Membership": "Dynamic (follow team changes)",
+        "Static Membership": "Static (capture users on save)"
     },
     "messages": {
         "Select Timeline Members": "Enter a name and select at least one team or user.",
@@ -27,6 +33,10 @@
         "No calendar users": "No active users available for this calendar.",
         "All calendar people hidden": "Everyone is hidden. Select a person above or choose Show all.",
         "Select Calendar Members": "Enter a name, choose a calendar type, and select at least one team or person.",
-        "Could not reassign event": "Could not reassign this event. Check your permissions and try again."
+        "Could not update event": "Could not update this event. Check your permissions and try again.",
+        "Could not save view settings": "Could not save calendar view settings. Please try again.",
+        "Calendar Membership Help": "Dynamic calendars resolve the current team members on every refresh. Static calendars capture the selected teams and users when you save. Later team changes do not change that list. Saving a static calendar again refreshes its captured list. Show inactive users and calendar permissions still apply.",
+        "Static Calendar Member Limit": "A static calendar can include up to 500 users. Select fewer teams or users, or use dynamic membership.",
+        "Could not capture calendar members": "Could not capture the calendar members. No calendar changes were saved. Please try again."
     }
 }
