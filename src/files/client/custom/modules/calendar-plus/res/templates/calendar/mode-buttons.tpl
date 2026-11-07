@@ -31,8 +31,6 @@
                 </a>
             </li>
         {{/each}}
-        <li class="divider" role="separator"></li>
-        <li><a role="button" tabindex="0" data-action="settings">{{translate 'Settings' scope='Calendar'}}</a></li>
         {{#if hasMoreItems}}
             <li class="divider"></li>
         {{/if}}

@@ -7,7 +7,8 @@ define('calendar-plus:views/calendar/modals/calendar', [
   'calendar-plus:views/calendar/fields/users',
   'crm:views/calendar/fields/teams',
   'calendar-plus:calendar-definitions',
-], (Modal, Model, Record, Varchar, Enum, Users, Teams, Definitions) => {
+  'calendar-plus:views/calendar/settings-form',
+], (Modal, Model, Record, Varchar, Enum, Users, Teams, Definitions, SettingsForm) => {
   return class extends Modal {
     className = 'dialog dialog-record';
 
@@ -24,6 +25,8 @@ define('calendar-plus:views/calendar/modals/calendar', [
       });
       const item = this.options.calendar;
       const membershipOnly = item?.source === 'shared';
+      const settingsOnly = item?.source === 'personal';
+      this.settingsForm = new SettingsForm(this);
       const routeMode =
         item?.routeMode ||
         (item?.id
@@ -44,7 +47,7 @@ define('calendar-plus:views/calendar/modals/calendar', [
         { name: 'cancel', label: 'Cancel', onClick: () => this.close() },
       ];
 
-      if (item && !membershipOnly)
+      if (item && !membershipOnly && !settingsOnly)
         this.dropdownItemList.push({
           name: 'remove',
           label: 'Remove',
@@ -53,6 +56,7 @@ define('calendar-plus:views/calendar/modals/calendar', [
 
       this.model = new Model(
         Espo.Utils.cloneDeep({
+          ...this.settingsForm.defaults(item ? routeMode : null, this.options.calendarView),
           name: item?.name || '',
           mode: Definitions.normalizeMode(item?.mode || 'agendaWeek'),
           usersIds: item?.userIdList || [],
@@ -60,14 +64,12 @@ define('calendar-plus:views/calendar/modals/calendar', [
           teamsIds: item?.teamIdList || [],
           teamsNames: item?.teamNames || {},
           membershipMode: item?.membershipMode === 'static' ? 'static' : 'dynamic',
-          showInactiveUsers:
-            !!item && Definitions.showInactiveUsers(this.getPreferences(), routeMode),
         }),
       );
       this.model.name = 'CalendarView';
       const rows = [];
 
-      if (!membershipOnly) {
+      if (!membershipOnly && !settingsOnly) {
         rows.push([
           {
             view: new Varchar({
@@ -95,36 +97,46 @@ define('calendar-plus:views/calendar/modals/calendar', [
         ]);
       }
 
-      rows.push(
-        [
-          { view: new Teams({ name: 'teams', labelText: this.translate('teams', 'fields') }) },
-          false,
-        ],
-        [
-          { view: new Users({ name: 'users', labelText: this.translate('users', 'fields') }) },
-          false,
-        ],
-        [
-          {
-            view: new Enum({
-              name: 'membershipMode',
-              labelText: this.translate('Calendar Membership', 'labels', 'Calendar'),
-              tooltipText: this.translate('Calendar Membership Help', 'messages', 'Calendar'),
-              params: {
-                required: true,
-                tooltip: true,
-                options: ['dynamic', 'static'],
-                translatedOptions: {
-                  dynamic: this.translate('Dynamic Membership', 'labels', 'Calendar'),
-                  static: this.translate('Static Membership', 'labels', 'Calendar'),
+      if (!settingsOnly)
+        rows.push(
+          [
+            { view: new Teams({ name: 'teams', labelText: this.translate('teams', 'fields') }) },
+            false,
+          ],
+          [
+            { view: new Users({ name: 'users', labelText: this.translate('users', 'fields') }) },
+            false,
+          ],
+          [
+            {
+              view: new Enum({
+                name: 'membershipMode',
+                labelText: this.translate('Calendar Membership', 'labels', 'Calendar'),
+                tooltipText: this.translate('Calendar Membership Help', 'messages', 'Calendar'),
+                params: {
+                  required: true,
+                  tooltip: true,
+                  options: ['dynamic', 'static'],
+                  translatedOptions: {
+                    dynamic: this.translate('Dynamic Membership', 'labels', 'Calendar'),
+                    static: this.translate('Static Membership', 'labels', 'Calendar'),
+                  },
                 },
-              },
-            }),
-          },
-          false,
-        ],
+              }),
+            },
+            false,
+          ],
+        );
+      const settingsLayout = this.settingsForm.layout(
+        this.model.attributes.mode,
+        !settingsOnly,
+        !settingsOnly && !membershipOnly,
       );
-      this.recordView = new Record({ model: this.model, detailLayout: [{ rows }] });
+      this.recordView = new Record({
+        model: this.model,
+        detailLayout: [...(rows.length ? [{ rows }] : []), ...settingsLayout],
+        dynamicLogicDefs: this.settingsForm.dynamicLogicDefs(),
+      });
       this.assignView('record', this.recordView);
     }
 
@@ -133,11 +145,20 @@ define('calendar-plus:views/calendar/modals/calendar', [
 
       const data = this.recordView.processFetch();
 
-      if (this.recordView.validate()) return;
+      if (!data || this.recordView.validate()) return;
 
       const membershipOnly = this.options.calendar?.source === 'shared';
+      const mode = membershipOnly
+        ? 'timeline'
+        : this.options.calendar?.source === 'personal'
+          ? this.options.calendar.mode
+          : data.mode;
+      this.settingValues = this.settingsForm.values(data, mode);
+      if (!this.settingValues) return;
+
+      if (this.options.calendar?.source === 'personal') return this.persistPersonalSettings();
+
       const name = membershipOnly ? 'Timeline' : data.name;
-      const mode = membershipOnly ? 'timeline' : data.mode;
 
       if (
         !name?.trim() ||
@@ -209,10 +230,42 @@ define('calendar-plus:views/calendar/modals/calendar', [
     }
 
     async actionRemove() {
-      if (this.options.calendar?.source === 'shared') return;
+      if (['shared', 'personal'].includes(this.options.calendar?.source)) return;
 
       await this.confirm(this.translate('confirmation', 'messages'));
       await this.persist(null);
+    }
+
+    settingsPatch(key) {
+      const previous = this.getPreferences().get('calendarPlusViewSettings') || {};
+      return { ...previous, [key]: { ...previous[key], ...this.settingValues } };
+    }
+
+    async persistPersonalSettings() {
+      const preferences = this.getPreferences();
+      const previous = preferences.get('calendarPlusViewSettings');
+      this.saving = true;
+      this.disableButton('save');
+      try {
+        await preferences.save(
+          {
+            calendarPlusViewSettings: this.settingsPatch(this.options.calendar.routeMode),
+          },
+          { patch: true, wait: true },
+        );
+      } catch (error) {
+        preferences.set('calendarPlusViewSettings', previous);
+        if (!this.calendarEditorRemoved) {
+          this.enableButton('save');
+          Espo.Ui.error(this.translate('Could not save view settings', 'messages', 'Calendar'));
+        }
+        return;
+      } finally {
+        this.saving = false;
+      }
+      if (this.calendarEditorRemoved) return;
+      this.options.onSave(this.options.calendar);
+      this.close();
     }
 
     async persistSharedSelection(item) {
@@ -220,6 +273,7 @@ define('calendar-plus:views/calendar/modals/calendar', [
       const key = 'calendarPlusSharedSelection';
       const original = preferences.get(key);
       const previous = original ? Espo.Utils.cloneDeep(original) : original;
+      const previousSettings = preferences.get('calendarPlusViewSettings');
       const selection = {
         teamIdList: item.teamIdList,
         teamNames: item.teamNames,
@@ -230,14 +284,20 @@ define('calendar-plus:views/calendar/modals/calendar', [
       };
 
       try {
-        await preferences.save({ [key]: selection }, { patch: true });
+        await preferences.save(
+          { [key]: selection, calendarPlusViewSettings: this.settingsPatch('timeline') },
+          { patch: true, wait: true },
+        );
       } catch (error) {
         preferences.set(key, previous);
+        preferences.set('calendarPlusViewSettings', previousSettings);
         this.enableButton('save');
         this.enableButton('remove');
 
         return;
       }
+
+      if (this.calendarEditorRemoved) return;
 
       this.options.onSave({
         ...selection,
@@ -279,15 +339,21 @@ define('calendar-plus:views/calendar/modals/calendar', [
         if (item) next[targetKey].push(item);
       }
 
+      const previousSettings = preferences.get('calendarPlusViewSettings');
+      if (item && this.settingValues)
+        next.calendarPlusViewSettings = this.settingsPatch(`view:${item.id}`);
       try {
-        await preferences.save(next, { patch: true });
+        await preferences.save(next, { patch: true, wait: true });
       } catch (error) {
         for (const [key, value] of Object.entries(previous)) preferences.set(key, value);
+        preferences.set('calendarPlusViewSettings', previousSettings);
         this.enableButton('save');
         this.enableButton('remove');
 
         return;
       }
+
+      if (this.calendarEditorRemoved) return;
 
       this.options.onSave(
         item

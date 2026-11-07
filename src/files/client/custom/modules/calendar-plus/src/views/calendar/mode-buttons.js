@@ -5,35 +5,6 @@ define('calendar-plus:views/calendar/mode-buttons', [
   return class extends ModeButtons {
     template = 'calendar-plus:calendar/mode-buttons';
 
-    events = {
-      'click [data-action="settings"]': function (event) {
-        event.preventDefault();
-        event.stopPropagation();
-        this.actionSettings();
-      },
-      'keydown [data-action="settings"]': function (event) {
-        if (event.key !== 'Enter' && event.key !== ' ') return;
-
-        event.preventDefault();
-        event.stopPropagation();
-        this.actionSettings();
-      },
-    };
-
-    actionSettings() {
-      const parent = this.getCalendarParentView();
-      this.createView(
-        'settingsModal',
-        'calendar-plus:views/calendar/modals/settings',
-        {
-          calendar: parent,
-          mode: this.mode,
-          inactiveUsersAvailable: this.data().inactiveUsersAvailable,
-        },
-        (view) => view.render(),
-      );
-    }
-
     getModeDataList(originalOrder) {
       const primaryModes = ['month', 'agendaWeek', 'agendaDay', 'timeline'];
       const core = super.getModeDataList(originalOrder);
@@ -80,9 +51,11 @@ define('calendar-plus:views/calendar/mode-buttons', [
         allModeDataList: modes,
         selectedModeLabel: selected?.label || this.translate('Calendar', 'scopeNames'),
         calendarEditable:
-          this.isCustomViewAvailable &&
-          (!!Definitions.find(this.getPreferences(), this.mode) ||
-            parent.calendarType === 'shared'),
+          !parent.options?.userId &&
+          (this.isCustomViewAvailable ||
+            ['month', 'agendaWeek', 'agendaDay', 'timeline', 'timeline-personal'].includes(
+              this.mode,
+            )),
       };
     }
   };

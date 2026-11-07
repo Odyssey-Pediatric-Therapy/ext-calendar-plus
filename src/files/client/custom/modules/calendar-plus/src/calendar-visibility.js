@@ -84,6 +84,11 @@ define('calendar-plus:calendar-visibility', ['calendar-plus:calendar-definitions
       return 'Created event status hidden';
     }
 
+    const completed = calendar.getMetadata().get(['scopes', scope, 'completedStatusList']) || [];
+    if (settings.showCompletedEvents === false && completed.includes(attributes.status)) {
+      return 'Created event status hidden';
+    }
+
     const currentUserId = calendar.getUser().id;
     if (
       settings.showDeclinedEvents === false &&

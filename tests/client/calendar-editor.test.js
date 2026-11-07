@@ -8,7 +8,13 @@ function load(file, dependencies = {}, espo = {}) {
   let exported;
   vm.runInNewContext(readFileSync(new URL(file, root), 'utf8'), {
     define: (name, names, factory) => {
-      exported = factory(...names.map((name) => dependencies[name]));
+      exported = factory(
+        ...names.map((name) =>
+          name === 'calendar-plus:views/calendar/settings-form'
+            ? load('views/calendar/settings-form.js', dependencies, espo)
+            : dependencies[name],
+        ),
+      );
     },
     Espo: espo,
   });
@@ -60,6 +66,7 @@ function fixture(item = null) {
       'views/modal': Modal,
       model: Model,
       'views/record/edit-for-modal': Record,
+      'views/fields/bool': Field,
       'views/fields/varchar': Field,
       'views/fields/enum': Field,
       'calendar-plus:views/calendar/fields/users': Field,
@@ -90,6 +97,7 @@ function fixture(item = null) {
   editor.close = () => {
     state.closed = true;
   };
+  editor.getConfig = () => ({ get: () => undefined });
   editor.getPreferences = () => ({
     get: (key) => state[key],
     set: (key, value) => {
@@ -263,6 +271,7 @@ test('saved timeline routes mount the timeline renderer and saving reopens even 
   assert.equal(page.mounted.view, 'calendar-plus:views/calendar/timeline');
   assert.equal(page.mounted.options.calendarType, 'saved-legacy');
   assert.equal(page.mounted.options.mode, 'view-timeline-legacy');
+  page.getCalendarView = () => ({});
   page.assignView = async (name, view) => {
     page.editor = view;
   };
@@ -560,7 +569,7 @@ function inactiveMenuFixture(state = {}, mode = 'view-grid', fail = false) {
   return { view, parent, saves, state, errors };
 }
 
-test('inactive-user choice follows a saved calendar ID across type changes and stays outside its membership dialog', () => {
+test('inactive-user choice follows a saved calendar ID and appears in its edit dialog', () => {
   const { editor, state } = fixture({ id: 'grid', source: 'calendar' });
   state.calendarPlusViewSettings = { 'view:grid': { showInactiveUsers: true } };
   editor.setup();
@@ -577,7 +586,14 @@ test('inactive-user choice follows a saved calendar ID across type changes and s
     new URL('../res/templates/calendar/mode-buttons.tpl', root),
     'utf8',
   );
-  assert.equal(template.includes('data-action="settings"'), true);
+  assert.equal(template.includes('data-action="settings"'), false);
+  assert.ok(
+    editor.recordView.options.detailLayout.some((panel) =>
+      panel.rows.some((row) =>
+        row.some((cell) => cell && cell.view.options.name === 'showInactiveUsers'),
+      ),
+    ),
+  );
 });
 
 test('calendar user picker includes inactive internal users only when enabled without losing team filters', () => {
@@ -602,18 +618,13 @@ test('calendar user picker includes inactive internal users only when enabled wi
   assert.deepEqual(picker.getSelectBoolFilterList(), ['onlyMyTeam']);
 });
 
-test('settings menu supports Enter and Space without activating on unrelated keys', () => {
-  const { view } = inactiveMenuFixture();
-  let toggles = 0;
-  view.actionSettings = () => toggles++;
-  for (const key of ['Enter', ' ', 'Escape']) {
-    view.events['keydown [data-action="settings"]'].call(view, {
-      key,
-      preventDefault() {},
-      stopPropagation() {},
-    });
+test('all built-in calendars expose their edit button and the separate Settings action is removed', () => {
+  for (const mode of ['month', 'agendaWeek', 'agendaDay', 'timeline']) {
+    const { view } = inactiveMenuFixture({}, mode);
+    view.mode = mode;
+    assert.equal(view.data().calendarEditable, true);
+    assert.equal(typeof view.actionSettings, 'undefined');
   }
-  assert.equal(toggles, 2);
 });
 
 test('new and existing calendars default to dynamic membership and expose the static option', () => {
@@ -907,6 +918,7 @@ test('view Settings exposes relevant controls and honors admin feature gates', (
     'eventTextSize',
     'showDeclinedEvents',
     'showCanceledEvents',
+    'showCompletedEvents',
     'rememberHiddenPeople',
     'showTooltips',
     'tooltipAttendees',
@@ -926,6 +938,7 @@ test('view Settings exposes relevant controls and honors admin feature gates', (
     'eventTextSize',
     'showDeclinedEvents',
     'showCanceledEvents',
+    'showCompletedEvents',
   ]);
   const timeline = settingsFixture({ mode: 'timeline' });
   assert.deepEqual(Array.from(timeline.view.settingNames), [
@@ -936,6 +949,7 @@ test('view Settings exposes relevant controls and honors admin feature gates', (
     'eventTextSize',
     'showDeclinedEvents',
     'showCanceledEvents',
+    'showCompletedEvents',
     'dayBoundary',
     'timelineRowHeight',
     'showTooltips',
@@ -967,6 +981,7 @@ test('view Settings saves one view atomically, preserves hidden values, and appl
     eventTextSize: 'medium',
     showDeclinedEvents: true,
     showCanceledEvents: true,
+    showCompletedEvents: true,
     rememberHiddenPeople: true,
     tooltipAttendees: true,
     tooltipAssignee: true,
@@ -1107,7 +1122,12 @@ test('view Settings groups related controls into labeled panels and omits unavai
     ['Display', 'Time Range', 'People and Events', 'Tooltips'],
   );
 
-  const fieldNames = (panel) => Array.from(panel.rows, (row) => row[0].view.options.name);
+  const fieldNames = (panel) =>
+    Array.from(panel.rows).flatMap((row) =>
+      Array.from(row)
+        .filter(Boolean)
+        .map((cell) => cell.view.options.name),
+    );
   assert.deepEqual(fieldNames(panels.find((panel) => panel.name === 'tooltips')), [
     'showTooltips',
     'tooltipAttendees',
@@ -1125,6 +1145,7 @@ test('view Settings groups related controls into labeled panels and omits unavai
     'showInactiveUsers',
     'showDeclinedEvents',
     'showCanceledEvents',
+    'showCompletedEvents',
     'rememberHiddenPeople',
   ]);
 
@@ -1216,4 +1237,258 @@ test('search-revealed events bypass canceled and declined hiding without changin
   assert.equal(filtered[0].recordId, 'match');
   assert.equal(settings.showCanceledEvents, false);
   assert.equal(settings.showDeclinedEvents, false);
+});
+
+test('calendar membership and settings save together, retaining other calendars and unavailable options', async () => {
+  const { editor, state } = fixture({
+    id: 'grid',
+    source: 'calendar',
+    name: 'Team week',
+    mode: 'agendaWeek',
+    userIdList: ['ann'],
+  });
+  state.calendarPlusViewSettings = {
+    'view:grid': { showTooltips: false, dayBoundary: 'black' },
+    month: { showWeekends: false },
+  };
+  editor.setup();
+  Object.assign(editor.model.attributes, {
+    showWeekends: false,
+    slotDuration: '5',
+    visibleTimeStart: '08:00',
+    visibleTimeEnd: '15:00',
+    showInactiveUsers: true,
+  });
+  const saves = [];
+  const preferences = editor.getPreferences();
+  const save = preferences.save;
+  preferences.save = async (data, options) => {
+    saves.push({ data, options });
+    await save(data);
+  };
+  editor.getPreferences = () => preferences;
+  await editor.actionSave();
+  assert.equal(saves.length, 1);
+  assert.equal(saves[0].options.wait, true);
+  assert.ok(saves[0].data.calendarViewDataList);
+  const stored = state.calendarPlusViewSettings['view:grid'];
+  assert.equal(stored.slotDuration, 5);
+  assert.equal(stored.visibleTimeStart, '08:00');
+  assert.equal(stored.showWeekends, false);
+  assert.equal(stored.showTooltips, false);
+  assert.equal(stored.showInactiveUsers, true);
+  assert.equal(stored.dayBoundary, 'black');
+  assert.equal(state.calendarPlusViewSettings.month.showWeekends, false);
+});
+
+test('built-in calendars save settings without requiring membership or creating a saved calendar', async () => {
+  for (const mode of ['month', 'agendaWeek', 'agendaDay']) {
+    const item = { source: 'personal', mode, routeMode: mode };
+    const { editor, state } = fixture(item);
+    editor.setup();
+    const names = editor.recordView.options.detailLayout.flatMap((panel) =>
+      panel.rows.flatMap((row) => row.filter(Boolean).map((cell) => cell.view.options.name)),
+    );
+    assert.equal(names.includes('users'), false);
+    assert.equal(names.includes('showInactiveUsers'), false);
+    assert.equal(names.includes('showTooltips'), true);
+    assert.equal(editor.dropdownItemList.length, 0);
+    const data = { ...editor.model.attributes, showWeekends: false };
+    delete data.mode; // Native record fetch only includes fields present in the form.
+    editor.recordView.processFetch = () => data;
+    await editor.actionSave();
+    assert.equal(state.calendarPlusViewSettings[mode].showWeekends, false);
+    assert.equal(state.calendarViewDataList.length, 1);
+    assert.equal(state.calendarPlusList.length, 1);
+    assert.equal(state.saved.routeMode, mode);
+  }
+});
+
+test('the default Timeline saves membership and view options in one request', async () => {
+  const { editor, state } = fixture({
+    source: 'shared',
+    mode: 'timeline',
+    routeMode: 'timeline',
+    userIdList: ['ann'],
+  });
+  editor.setup();
+  const data = { ...editor.model.attributes, dayBoundary: 'black', showInactiveUsers: true };
+  delete data.mode;
+  editor.recordView.processFetch = () => data;
+  await editor.actionSave();
+  assert.deepEqual(Array.from(state.calendarPlusSharedSelection.userIdList), ['ann']);
+  assert.equal(state.calendarPlusViewSettings.timeline.dayBoundary, 'black');
+  assert.equal(state.calendarPlusViewSettings.timeline.showInactiveUsers, true);
+  assert.equal(state.calendarViewDataList.length, 1);
+});
+
+test('failed combined saves restore membership and view settings and keep the editor open', async () => {
+  for (const item of [
+    { source: 'calendar', id: 'grid', name: 'Week', mode: 'agendaWeek', userIdList: ['ann'] },
+    { source: 'shared', mode: 'timeline', routeMode: 'timeline', userIdList: ['ann'] },
+    { source: 'personal', mode: 'month', routeMode: 'month' },
+  ]) {
+    const { editor, state } = fixture(item);
+    state.calendarPlusViewSettings = { month: { showWeekends: true } };
+    const before = structuredClone(state);
+    state.fail = true;
+    editor.setup();
+    editor.model.attributes.showWeekends = false;
+    await editor.actionSave();
+    assert.deepEqual(state.calendarPlusViewSettings, before.calendarPlusViewSettings);
+    assert.deepEqual(state.calendarViewDataList, before.calendarViewDataList);
+    assert.equal(state.calendarPlusSharedSelection, undefined);
+    assert.equal(state.closed, undefined);
+  }
+});
+
+test('changing calendar type updates relevant settings through native dynamic visibility', () => {
+  const { editor } = fixture();
+  editor.setup();
+  const exported = {};
+  vm.runInNewContext(
+    readFileSync(
+      new URL('../../site/client/lib/transpiled/src/dynamic-logic.js', import.meta.url),
+      'utf8',
+    ),
+    {
+      define: (name, deps, factory) => factory(exported, { inject: () => () => {} }, class {}),
+    },
+  );
+  const visibility = {};
+  const attributes = editor.model.attributes;
+  const logic = new exported.default(editor.recordView.options.dynamicLogicDefs, {
+    model: { has: (name) => name in attributes, get: (name) => attributes[name] },
+    showField: (name) => {
+      visibility[name] = true;
+    },
+    hideField: (name) => {
+      visibility[name] = false;
+    },
+    showPanel() {},
+    hidePanel() {},
+  });
+  for (const mode of ['agendaWeek', 'timeline', 'month', 'agendaDay']) {
+    attributes.mode = mode;
+    logic.process();
+    assert.equal(visibility.dayBoundary, mode === 'timeline');
+    assert.equal(visibility.slotDuration, ['agendaWeek', 'agendaDay'].includes(mode));
+    assert.equal(visibility.showGradient, ['agendaWeek', 'month'].includes(mode));
+    assert.equal(visibility.visibleTimeStart, mode !== 'month');
+    for (const enabled of [false, true, false]) {
+      attributes.showTooltips = enabled;
+      logic.process();
+      assert.equal(visibility.showTooltips, true);
+      for (const name of [
+        'tooltipAttendees',
+        'tooltipAssignee',
+        'tooltipLocation',
+        'tooltipStatus',
+      ]) {
+        assert.equal(visibility[name], enabled);
+      }
+    }
+  }
+});
+
+test('built-in edit actions open the relevant form, including users restricted to their own calendar', async () => {
+  class Page {}
+  class Editor {
+    constructor(options) {
+      this.options = options;
+    }
+    async render() {}
+  }
+  const CalendarPage = load('views/calendar/calendar-page.js', {
+    'crm:views/calendar/calendar-page': Page,
+    'calendar-plus:views/calendar/modals/calendar': Editor,
+    'calendar-plus:calendar-definitions': definitions,
+  });
+  for (const mode of ['month', 'agendaWeek', 'agendaDay', 'timeline-personal']) {
+    const page = new CalendarPage();
+    page.mode = mode;
+    page.options = {};
+    page.getPreferences = () => ({ get() {} });
+    page.getAcl = () => ({ getPermissionLevel: () => 'no' });
+    const calendar = { mode };
+    page.getCalendarView = () => calendar;
+    page.assignView = async (name, view) => {
+      page.editor = view;
+    };
+    await page.editCustomView();
+    assert.equal(page.editor.options.calendar.source, 'personal');
+    assert.equal(page.editor.options.calendar.routeMode, mode);
+    assert.equal(
+      page.editor.options.calendar.mode,
+      mode === 'timeline-personal' ? 'timeline' : mode,
+    );
+    assert.equal(page.editor.options.calendarView, calendar);
+  }
+});
+
+test('saving with hidden tooltip details retains their values when fields are omitted from fetch', async () => {
+  const { editor, state } = fixture({ source: 'personal', mode: 'month', routeMode: 'month' });
+  state.calendarPlusViewSettings = {
+    month: {
+      tooltipAttendees: false,
+      tooltipAssignee: true,
+      tooltipLocation: false,
+      tooltipStatus: true,
+    },
+  };
+  editor.setup();
+  const data = { ...editor.model.attributes, showTooltips: false };
+  for (const name of ['tooltipAttendees', 'tooltipAssignee', 'tooltipLocation', 'tooltipStatus'])
+    delete data[name];
+  editor.recordView.processFetch = () => data;
+  await editor.actionSave();
+  const saved = state.calendarPlusViewSettings.month;
+  assert.equal(saved.showTooltips, false);
+  assert.equal(saved.tooltipAttendees, false);
+  assert.equal(saved.tooltipAssignee, true);
+  assert.equal(saved.tooltipLocation, false);
+  assert.equal(saved.tooltipStatus, true);
+});
+
+test('completed-event visibility uses each entity metadata independently from canceled statuses', async () => {
+  const settings = { showCompletedEvents: false };
+  const view = {
+    mode: 'timeline',
+    getPreferences: () => ({ get: () => ({ timeline: settings }) }),
+    getEventTypeCompletedStatusList: (scope) =>
+      ({ Task: ['Completed'], Meeting: ['Held'], CustomEvent: ['Done', 'Closed'] })[scope] || [],
+    getEventTypeCanceledStatusList: () => ['Canceled'],
+  };
+  const events = [
+    { scope: 'Task', status: 'Completed' },
+    { extendedProps: { scope: 'Meeting', status: 'Held' } },
+    { scope: 'CustomEvent', status: 'Done' },
+    { scope: 'CustomEvent', status: 'Closed' },
+    { scope: 'Task', status: 'Canceled' },
+    { scope: 'Task', status: 'In Progress' },
+    { scope: 'UnknownEvent', status: 'Completed' },
+    { type: 'background', scope: 'Task', status: 'Completed' },
+  ];
+  assert.equal(definitions.shouldFilterEvents(view), true);
+  assert.deepEqual(Array.from(await definitions.filterEvents(view, events)), events.slice(4));
+  settings.showCanceledEvents = false;
+  assert.deepEqual(Array.from(await definitions.filterEvents(view, events)), events.slice(5));
+  view.searchResult = { scope: 'CustomEvent', id: 'target' };
+  const result = { scope: 'CustomEvent', status: 'Done', recordId: 'target' };
+  assert.deepEqual(Array.from(await definitions.filterEvents(view, [result])), [result]);
+  settings.showCompletedEvents = true;
+  settings.showCanceledEvents = true;
+  assert.equal(definitions.shouldFilterEvents(view), false);
+  assert.equal(await definitions.filterEvents(view, events), events);
+});
+
+test('Show completed events defaults on and saves independently for each calendar', async () => {
+  const { editor, state } = fixture({ source: 'personal', mode: 'month', routeMode: 'month' });
+  editor.setup();
+  assert.equal(editor.model.attributes.showCompletedEvents, true);
+  editor.model.attributes.showCompletedEvents = false;
+  await editor.actionSave();
+  assert.equal(state.calendarPlusViewSettings.month.showCompletedEvents, false);
+  const stored = settingsFixture({ stored: { showCompletedEvents: false } });
+  assert.equal(stored.view.model.attributes.showCompletedEvents, false);
 });
