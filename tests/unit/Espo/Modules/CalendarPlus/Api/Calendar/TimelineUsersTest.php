@@ -40,7 +40,7 @@ final class TimelineUsersTest extends \PHPUnit\Framework\TestCase
     return $acl;
   }
 
-  public function testTeamAndPeopleAreCombinedDeduplicatedSortedAndPermissionFiltered(): void
+  public function testTeamAndPeoplePreserveStoredOrderAndAreDeduplicatedAndPermissionFiltered(): void
   {
     $ann = $this->user('ann', 'Ann');
     $bob = $this->user('bob', 'Bob');
@@ -63,8 +63,57 @@ final class TimelineUsersTest extends \PHPUnit\Framework\TestCase
     $acl->method('checkUserPermission')->willReturnCallback(fn($user, $permission) => $user !== $hidden && $permission === 'userCalendar');
     $action = new TimelineUsers($manager, $acl, $this->user('me', 'Me'));
     $response = $action->process($this->request(['userIdList' => ['bob'], 'teamIdList' => ['team1']]));
-    self::assertSame(['users' => [['id' => 'ann', 'name' => 'Ann'], ['id' => 'bob', 'name' => 'Bob']]],
+    self::assertSame(['users' => [['id' => 'bob', 'name' => 'Bob'], ['id' => 'ann', 'name' => 'Ann']]],
       json_decode((string) $response->getBody(), true));
+  }
+
+  public function testStoredUserOrderWinsOverDatabaseAndNameOrder(): void
+  {
+    $ann = $this->user('ann', 'Ann');
+    $bob = $this->user('bob', 'Bob');
+    $builder = $this->createMock(RDBSelectBuilder::class);
+    $builder->method('find')->willReturn(new EntityCollection([$ann, $bob]));
+    $repo = $this->createMock(RDBRepository::class);
+    $repo->method('where')->willReturn($builder);
+    $manager = $this->createMock(EntityManager::class);
+    $manager->method('getRDBRepositoryByClass')->willReturn($repo);
+    $acl = $this->acl();
+    $acl->method('checkUserPermission')->willReturn(true);
+    $response = (new TimelineUsers($manager, $acl, $this->user('me', 'Me')))->process($this->request([
+      'userIdList' => ['bob', 'missing', 'ann', 'bob'],
+    ]));
+    self::assertSame(['users' => [['id' => 'bob', 'name' => 'Bob'], ['id' => 'ann', 'name' => 'Ann']]],
+      json_decode((string) $response->getBody(), true));
+  }
+
+  public function testTeamsExpandInStoredOrderWithAlphabeticalMembersAndNoDuplicates(): void
+  {
+    $zoe = $this->user('zoe', 'Zoe');
+    $bob = $this->user('bob', 'Bob');
+    $ann = $this->user('ann', 'Ann');
+    $builder = $this->createMock(RDBSelectBuilder::class);
+    $builder->method('join')->willReturnSelf();
+    $queries = [];
+    $builder->method('where')->willReturnCallback(function ($where) use ($builder, &$queries) {
+      $queries[] = $where;
+      return $builder;
+    });
+    $builder->method('find')->willReturnOnConsecutiveCalls(
+      new EntityCollection([$zoe, $bob]), new EntityCollection([$ann, $bob]));
+    $repo = $this->createMock(RDBRepository::class);
+    $repo->method('distinct')->willReturn($builder);
+    $manager = $this->createMock(EntityManager::class);
+    $manager->method('getRDBRepositoryByClass')->willReturn($repo);
+    $acl = $this->acl();
+    $acl->method('checkUserPermission')->willReturn(true);
+    $response = (new TimelineUsers($manager, $acl, $this->user('me', 'Me')))->process($this->request([
+      'teamIdList' => ['team-b', 'team-a', 'team-b'],
+    ]));
+    self::assertSame([
+      ['teams.id' => ['team-b'], 'isActive' => true],
+      ['teams.id' => ['team-a'], 'isActive' => true],
+    ], $queries);
+    self::assertSame(['bob', 'zoe', 'ann'], array_column(json_decode((string) $response->getBody(), true)['users'], 'id'));
   }
 
   public function testCalendarPermissionNoRejectsResolution(): void
@@ -120,7 +169,7 @@ final class TimelineUsersTest extends \PHPUnit\Framework\TestCase
     $response = (new TimelineUsers($manager, $acl, $this->user('me', 'Me')))->process($this->request([
       'teamIdList' => ['team1'], 'userIdList' => ['former'], 'includeInactiveUsers' => true,
     ]));
-    self::assertSame(['users' => [['id' => 'ann', 'name' => 'Ann'], ['id' => 'former', 'name' => 'Former member']]],
+    self::assertSame(['users' => [['id' => 'former', 'name' => 'Former member'], ['id' => 'ann', 'name' => 'Ann']]],
       json_decode((string) $response->getBody(), true));
   }
 
