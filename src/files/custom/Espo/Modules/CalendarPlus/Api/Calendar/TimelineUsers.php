@@ -53,21 +53,28 @@ class TimelineUsers implements Action
     if ($userIds) {
       foreach ($this->entityManager->getRDBRepositoryByClass(User::class)
         ->where(['id' => $userIds, ...$activeFilter])->find() as $user) {
-        if ($this->acl->checkUserPermission($user, 'userCalendar')) {
+        if (!isset($users[$user->getId()]) && $this->acl->checkUserPermission($user, 'userCalendar')) {
           $users[$user->getId()] = ['id' => $user->getId(), 'name' => $user->get('name')];
         }
       }
     }
-    if ($teamIds) {
+    // Database result order need not match the saved explicit selection.
+    $users = array_replace(array_fill_keys($userIds, null), $users);
+    $users = array_filter($users);
+    foreach (array_unique($teamIds) as $teamId) {
+      $teamUsers = [];
       foreach ($this->entityManager->getRDBRepositoryByClass(User::class)->distinct()->join('teams')
-        ->where(['teams.id' => $teamIds, ...$activeFilter])->find() as $user) {
-        if ($this->acl->checkUserPermission($user, 'userCalendar')) {
-          $users[$user->getId()] = ['id' => $user->getId(), 'name' => $user->get('name')];
+        ->where(['teams.id' => [$teamId], ...$activeFilter])->find() as $user) {
+        if (!isset($users[$user->getId()]) && $this->acl->checkUserPermission($user, 'userCalendar')) {
+          $teamUsers[$user->getId()] = ['id' => $user->getId(), 'name' => $user->get('name')];
         }
       }
+      // Sort within each team without changing saved user or team order.
+      uasort($teamUsers, static fn ($a, $b) =>
+        strnatcasecmp($a['name'] ?? '', $b['name'] ?? '') ?: strcmp($a['id'], $b['id']));
+      $users += $teamUsers;
     }
     $users = array_values($users);
-    usort($users, static fn ($a, $b) => strnatcasecmp($a['name'] ?? '', $b['name'] ?? '') ?: strcmp($a['id'], $b['id']));
     return ResponseComposer::json(['users' => $users]);
   }
 }
