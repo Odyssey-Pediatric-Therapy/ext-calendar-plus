@@ -1134,3 +1134,24 @@ test('saved view settings apply slot duration, weekends and midnight scroll to t
   assert.equal(options.slotDuration, '00:30:00');
   assert.equal(options.scrollTime, '06:00:00');
 });
+
+
+test('visible time window applies to the grid and shared Day columns and clamps preferred scroll time', () => {
+  const {view} = fixture();
+  const settings = {visibleTimeStart: '08:05', visibleTimeEnd: '15:00', slotDuration: 5};
+  view.getPreferences = () => ({get: key => key === 'calendarPlusViewSettings' ? {'view:saved': settings} :
+    key === 'calendarViewDataList' ? [{id: 'saved', name: 'Saved'}] : undefined});
+  const options = {};
+  view.scrollHour = 0;
+  view.calendar = {batchRendering: fn => fn(), setOption: (key, value) => { options[key] = value; }};
+  view.applyViewSettings();
+  assert.equal(options.slotMinTime, '08:05:00');
+  assert.equal(options.slotMaxTime, '15:00:00');
+  assert.equal(options.scrollTime, '08:05:00');
+  view.scrollHour = 23;
+  assert.equal(view.visibleScrollTime(), '14:55:00');
+  delete settings.visibleTimeStart; delete settings.visibleTimeEnd;
+  view.applyViewSettings();
+  assert.equal(options.slotMinTime, '00:00:00');
+  assert.equal(options.slotMaxTime, '24:00:00');
+});

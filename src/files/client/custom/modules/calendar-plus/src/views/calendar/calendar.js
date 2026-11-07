@@ -3,7 +3,7 @@ define('calendar-plus:views/calendar/calendar', [
 ], (Calendar, FullCalendar, Colors, EventTooltip, Definitions) => {
   // Share the standard calendar's editing callbacks; no scheduler plugin is required.
   const optionNames = [
-    'slotDuration', 'slotLabelInterval', 'slotLabelFormat', 'eventTimeFormat',
+    'slotMinTime', 'slotMaxTime', 'slotDuration', 'slotLabelInterval', 'slotLabelFormat', 'eventTimeFormat',
     'timeZone', 'firstDay', 'scrollTime', 'snapDuration', 'nowIndicator',
     'weekends', 'editable', 'selectable', 'selectMirror', 'longPressDelay', 'allDayText',
     'eventClick', 'eventAllow', 'eventDrop', 'eventResize',
@@ -76,20 +76,34 @@ define('calendar-plus:views/calendar/calendar', [
       this.scrollHour = this.baseScrollHour ?? this.scrollHour;
       if ([5, 10, 15, 30].includes(settings.slotDuration)) this.slotDuration = settings.slotDuration;
       if (Number.isInteger(settings.scrollHour) && settings.scrollHour >= 0 && settings.scrollHour <= 23) this.scrollHour = settings.scrollHour;
+      const range = Definitions.timeRange(settings) || {start: '00:00:00', end: '24:00:00'};
       this.eventTooltip?.refresh();
       this.calendar.batchRendering(() => {
+        this.calendar.setOption('slotMinTime', range.start);
+        this.calendar.setOption('slotMaxTime', range.end);
         this.calendar.setOption('weekends', settings.showWeekends !== false);
         this.calendar.setOption('slotDuration', `00:${String(this.slotDuration).padStart(2, '0')}:00`);
         this.calendar.setOption('snapDuration', Number(this.slotDuration) * 60 * 1000);
-        this.calendar.setOption('scrollTime', `${String(this.scrollHour ?? 6).padStart(2, '0')}:00:00`);
+        this.calendar.setOption('scrollTime', this.visibleScrollTime());
       });
       if (scroll) {
         this.clearDayColumns();
         this.syncSharedLayout();
-        this.calendar.scrollToTime(`${String(this.scrollHour ?? 6).padStart(2, '0')}:00:00`);
+        this.calendar.scrollToTime(this.visibleScrollTime());
         if (this.dayColumnsElement) this.syncColumnScroll();
       }
       this.refreshEventGradients();
+    }
+
+    visibleScrollTime() {
+      const range = Definitions.timeRange(Definitions.viewSettings(this.getPreferences(), this.mode)) ||
+        {start: '00:00:00', end: '24:00:00'};
+      const minutes = time => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
+      const start = minutes(range.start);
+      const slot = Number(this.slotDuration) || 30;
+      const target = Math.max(start, Math.min((this.scrollHour ?? 8) * 60, minutes(range.end) - 1));
+      const aligned = start + Math.floor((target - start) / slot) * slot;
+      return `${String(Math.floor(aligned / 60)).padStart(2, '0')}:${String(aligned % 60).padStart(2, '0')}:00`;
     }
 
     handleScrollToNow() {
@@ -738,8 +752,7 @@ define('calendar-plus:views/calendar/calendar', [
         container.scrollTop = scrollTop;
         return;
       }
-      const hour = String(this.scrollHour ?? 8).padStart(2, '0');
-      const slot = container.querySelector(`[data-time="${hour}:00:00"]`);
+      const slot = container.querySelector(`[data-time="${this.visibleScrollTime()}"]`);
       if (slot) {
         const header = container.querySelector('section > div:first-child');
         const headerHeight = header?.getBoundingClientRect().height || 0;

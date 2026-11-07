@@ -35,14 +35,25 @@ define('calendar-plus:views/calendar/timeline', [
       const settings = Definitions.viewSettings(this.getPreferences(), this.mode || 'timeline');
       this.eventTooltip.refresh();
       const showWeekends = settings.showWeekends !== false;
-      if (!this.timeline || this.weekendTimeline === this.timeline && this.timelineShowWeekends === showWeekends) return;
-      const apply = !showWeekends || this.timelineShowWeekends === false;
-      this.weekendTimeline = this.timeline;
-      this.timelineShowWeekends = showWeekends;
-      if (!apply) return;
-      this.timeline.setOptions({hiddenDates: settings.showWeekends === false ? [
-        {start: WEEKEND_START_REFERENCE, end: WEEKEND_END_REFERENCE, repeat: 'weekly'},
-      ] : []});
+      const range = Definitions.timeRange(settings) || {start: '00:00:00', end: '24:00:00'};
+      const signature = JSON.stringify([showWeekends, range]);
+      if (!this.timeline || this.settingsTimeline === this.timeline && this.timelineSettingsSignature === signature) return;
+      const hiddenDates = [];
+      if (!showWeekends) hiddenDates.push({start: WEEKEND_START_REFERENCE, end: WEEKEND_END_REFERENCE, repeat: 'weekly'});
+      if (range.start !== '00:00:00' || range.end !== '24:00:00') {
+        // Anchor the overnight gap to a reference day; vis repeats it daily in local time.
+        const start = new Date(WEEKEND_START_REFERENCE.replace(' ', 'T'));
+        start.setHours(Number(range.end.slice(0, 2)), Number(range.end.slice(3, 5)), 0, 0);
+        const end = new Date(WEEKEND_START_REFERENCE.replace(' ', 'T'));
+        end.setDate(end.getDate() + 1);
+        end.setHours(Number(range.start.slice(0, 2)), Number(range.start.slice(3, 5)), 0, 0);
+        hiddenDates.push({start, end, repeat: 'daily'});
+      }
+      const apply = hiddenDates.length || this.timelineHasHiddenDates;
+      this.settingsTimeline = this.timeline;
+      this.timelineSettingsSignature = signature;
+      this.timelineHasHiddenDates = !!hiddenDates.length;
+      if (apply) this.timeline.setOptions({hiddenDates});
     }
 
     createView(name, view, options, callback) {

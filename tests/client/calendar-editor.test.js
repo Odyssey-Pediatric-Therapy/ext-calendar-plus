@@ -483,7 +483,7 @@ function settingsFixture({mode = 'agendaWeek', inactive = true, config = {}, sto
   const errors = [];
   const Settings = load('views/calendar/modals/settings.js', {
     'views/modal': Modal, model: Model, 'views/record/edit-for-modal': Record,
-    'views/fields/bool': Field, 'views/fields/enum': Field, 'calendar-plus:calendar-definitions': definitions,
+    'views/fields/bool': Field, 'views/fields/enum': Field, 'views/fields/varchar': Field, 'calendar-plus:calendar-definitions': definitions,
   }, {Ui: {error: message => errors.push(message)}});
   const state = {calendarViewDataList: [{id: 'grid', name: 'Grid'}], calendarScrollHour: 0,
     calendarSlotDuration: 10, calendarPlusViewSettings: {'view:grid': stored, other: {showWeekends: false}}};
@@ -504,14 +504,14 @@ function settingsFixture({mode = 'agendaWeek', inactive = true, config = {}, sto
 
 test('view Settings exposes relevant controls and honors admin feature gates', () => {
   const week = settingsFixture();
-  assert.deepEqual(Array.from(week.view.settingNames), ['showInactiveUsers', 'showWeekends', 'slotDuration', 'scrollHour', 'showGradient', 'showTooltips']);
+  assert.deepEqual(Array.from(week.view.settingNames), ['showInactiveUsers', 'showWeekends', 'visibleTimeStart', 'visibleTimeEnd', 'slotDuration', 'scrollHour', 'showGradient', 'showTooltips']);
   assert.equal(week.view.model.attributes.scrollHour, '0');
   assert.equal(week.view.model.attributes.slotDuration, '10');
   const gated = settingsFixture({mode: 'month', inactive: false,
     config: {calendarPlusColorGradientEnabled: false, calendarPlusTooltipEnabled: false}});
   assert.deepEqual(Array.from(gated.view.settingNames), ['showWeekends']);
   const timeline = settingsFixture({mode: 'timeline'});
-  assert.deepEqual(Array.from(timeline.view.settingNames), ['showInactiveUsers', 'showWeekends', 'showTooltips']);
+  assert.deepEqual(Array.from(timeline.view.settingNames), ['showInactiveUsers', 'showWeekends', 'visibleTimeStart', 'visibleTimeEnd', 'showTooltips']);
 });
 
 test('view Settings saves one view atomically, preserves hidden values, and applies immediately', async () => {
@@ -521,7 +521,7 @@ test('view Settings saves one view atomically, preserves hidden values, and appl
   await view.actionSave();
   assert.deepEqual(JSON.parse(JSON.stringify(state.calendarPlusViewSettings['view:grid'])), {
     showTooltips: false, futureOption: 17, showWeekends: false, showInactiveUsers: true,
-    slotDuration: 5, scrollHour: 0, showGradient: false,
+    slotDuration: 5, scrollHour: 0, showGradient: false, visibleTimeStart: '00:00', visibleTimeEnd: '24:00',
   });
   assert.equal(state.calendarPlusViewSettings.other.showWeekends, false);
   assert.equal(state.calendarScrollHour, 0);
@@ -543,4 +543,21 @@ test('failed view Settings save restores preferences and leaves the dialog open 
   assert.equal(view.closed, undefined);
   assert.equal(view.enabled, true);
   assert.equal(errors.length, 1);
+});
+
+
+test('visible time range accepts clock or compact input, persists per view, and rejects invalid or reversed bounds', async () => {
+  const valid = settingsFixture();
+  Object.assign(valid.view.model.attributes, {visibleTimeStart: '0800', visibleTimeEnd: '15:00'});
+  await valid.view.actionSave();
+  assert.equal(valid.state.calendarPlusViewSettings['view:grid'].visibleTimeStart, '08:00');
+  assert.equal(valid.state.calendarPlusViewSettings['view:grid'].visibleTimeEnd, '15:00');
+  for (const [start, end] of [['15:00', '08:00'], ['08:00', '08:00'], ['24:00', '24:00'], ['08:60', '15:00'], ['08:00', '25:00'], ['', '15:00']]) {
+    const {view, saves, errors} = settingsFixture();
+    Object.assign(view.model.attributes, {visibleTimeStart: start, visibleTimeEnd: end});
+    await view.actionSave();
+    assert.equal(saves.length, 0);
+    assert.equal(errors.length, 1);
+    assert.equal(view.closed, undefined);
+  }
 });

@@ -57,3 +57,7 @@ Show inactive users remains an independent per-view option. Deleted users and us
 
 
 Calendar view settings are available from **… → Settings** and saved separately for each user and view. The modal includes **Show inactive users** for shared calendars and **Show weekends** for all views, including Timeline. Day and Week also offer **5, 10, 15, or 30 minute slots** and **Scroll to hour** (00:00–23:00), initially using the user's existing calendar preferences. Week and Month offer a personal gradient toggle when the administrator permits gradients. All views offer a personal tooltip toggle when the administrator permits tooltips. Administrator feature switches always take priority. Save applies changes immediately; Cancel leaves stored preferences unchanged.
+
+- Limit visible hours in Day, Week, and Timeline with **Show from** and **Show until** in view Settings (for example, 08:00–15:00). Defaults to the full day. Shared Day columns use the same range; events outside it are hidden from the timed grid, and all-day events remain visible.
+
+Timeline uses a repeating daily hidden interval for the visible-hour range, compressing the overnight gaps. It can be combined with hidden weekends. These options change the display, not event dates or durations.

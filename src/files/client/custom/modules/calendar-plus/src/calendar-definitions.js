@@ -31,7 +31,17 @@ define('calendar-plus:calendar-definitions', [], () => {
   };
   const viewSettings = (preferences, routeMode) =>
     preferences?.get('calendarPlusViewSettings')?.[viewSettingsKey(preferences, routeMode)] || {};
+  const timeRange = settings => {
+    const parse = value => {
+      if (typeof value !== 'string' || !/^(?:[01]\d|2[0-3]):?[0-5]\d$|^24:?00$/.test(value)) return null;
+      const digits = value.replace(':', '');
+      return `${digits.slice(0, 2)}:${digits.slice(2)}:00`;
+    };
+    const start = parse(settings.visibleTimeStart ?? '00:00');
+    const end = parse(settings.visibleTimeEnd ?? '24:00');
+    return start && end && start < end ? {start, end} : null;
+  };
   const showInactiveUsers = (preferences, routeMode) =>
     preferences.get('calendarPlusViewSettings')?.[viewSettingsKey(preferences, routeMode)]?.showInactiveUsers === true;
-  return {list, normalizeMode, sharedTimeline, find, viewSettingsKey, showInactiveUsers, membershipSelection, viewSettings};
+  return {list, normalizeMode, sharedTimeline, find, viewSettingsKey, showInactiveUsers, membershipSelection, viewSettings, timeRange};
 });

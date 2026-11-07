@@ -31,7 +31,9 @@
         "Time slot duration": "Time slot duration",
         "Scroll to hour": "Scroll to hour",
         "Show color gradient": "Show color gradient",
-        "Show tooltips": "Show tooltips"
+        "Show tooltips": "Show tooltips",
+        "Show from": "Show from (HH:mm)",
+        "Show until": "Show until (HH:mm)"
     },
     "messages": {
         "Select Timeline Members": "Enter a name and select at least one team or user.",
@@ -44,6 +46,7 @@
         "Could not save view settings": "Could not save calendar view settings. Please try again.",
         "Calendar Membership Help": "Dynamic calendars resolve the current team members on every refresh. Static calendars capture the selected teams and users when you save. Later team changes do not change that list. Saving a static calendar again refreshes its captured list. Show inactive users and calendar permissions still apply.",
         "Static Calendar Member Limit": "A static calendar can include up to 500 users. Select fewer teams or users, or use dynamic membership.",
-        "Could not capture calendar members": "Could not capture the calendar members. No calendar changes were saved. Please try again."
+        "Could not capture calendar members": "Could not capture the calendar members. No calendar changes were saved. Please try again.",
+        "Invalid visible time range": "Enter a valid time range, such as 08:00 to 15:00. The end must be later than the start; use 24:00 for the end of the day."
     }
 }

@@ -383,3 +383,28 @@ test('Timeline weekend visibility follows its view settings and restores weekend
   view.applyViewSettings();
   assert.deepEqual(options[1].hiddenDates, []);
 });
+
+
+test('Timeline hides hours outside its daily time window, combines weekends, and restores full days', () => {
+  const {view, preferences} = fixture();
+  view.mode = 'timeline';
+  const settings = {showWeekends: false, visibleTimeStart: '08:00', visibleTimeEnd: '15:00'};
+  preferences.calendarPlusViewSettings = {timeline: settings};
+  const options = [];
+  view.timeline = {setOptions: value => options.push(value)};
+  view.applyViewSettings();
+  const hidden = options[0].hiddenDates;
+  assert.equal(hidden.length, 2);
+  assert.equal(hidden[0].repeat, 'weekly');
+  assert.equal(hidden[1].repeat, 'daily');
+  assert.equal(hidden[1].start.getHours(), 15);
+  assert.equal(hidden[1].end.getHours(), 8);
+  assert.equal(hidden[1].end.getDate(), hidden[1].start.getDate() + 1);
+  settings.showWeekends = true; settings.visibleTimeStart = '00:00'; settings.visibleTimeEnd = '24:00';
+  view.applyViewSettings();
+  assert.equal(options[1].hiddenDates.length, 0);
+  settings.visibleTimeStart = '08:00';
+  view.applyViewSettings();
+  assert.equal(options[2].hiddenDates[0].start.getHours(), 0);
+  assert.equal(options[2].hiddenDates[0].end.getHours(), 8);
+});

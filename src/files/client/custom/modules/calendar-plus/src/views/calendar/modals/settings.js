@@ -1,7 +1,7 @@
 define('calendar-plus:views/calendar/modals/settings', [
-  'views/modal', 'model', 'views/record/edit-for-modal', 'views/fields/bool', 'views/fields/enum',
+  'views/modal', 'model', 'views/record/edit-for-modal', 'views/fields/bool', 'views/fields/enum', 'views/fields/varchar',
   'calendar-plus:calendar-definitions',
-], (Modal, Model, Record, Bool, Enum, Definitions) => {
+], (Modal, Model, Record, Bool, Enum, Varchar, Definitions) => {
   return class extends Modal {
     className = 'dialog dialog-record';
     templateContent = '<div class="record-container no-side-margin">{{{record}}}</div>';
@@ -21,6 +21,8 @@ define('calendar-plus:views/calendar/modals/settings', [
         showWeekends: stored.showWeekends !== false,
         slotDuration: String(stored.slotDuration ?? (preferences.get('calendarSlotDuration') || parent.baseSlotDuration || 30)),
         scrollHour: String(stored.scrollHour ?? preferences.get('calendarScrollHour') ?? parent.scrollHour ?? 6),
+        visibleTimeStart: (Definitions.timeRange(stored)?.start || '00:00:00').slice(0, 5),
+        visibleTimeEnd: (Definitions.timeRange(stored)?.end || '24:00:00').slice(0, 5),
         showGradient: stored.showGradient !== false,
         showTooltips: stored.showTooltips !== false,
       });
@@ -34,6 +36,10 @@ define('calendar-plus:views/calendar/modals/settings', [
       if (this.options.inactiveUsersAvailable) add('showInactiveUsers', 'Show inactive users');
       add('showWeekends', 'Show weekends');
       const mode = Definitions.normalizeMode(parent.viewMode || parent.mode);
+      if (['agendaDay', 'agendaWeek', 'timeline'].includes(mode)) {
+        add('visibleTimeStart', 'Show from', Varchar, {required: true, maxLength: 5});
+        add('visibleTimeEnd', 'Show until', Varchar, {required: true, maxLength: 5});
+      }
       if (['agendaDay', 'agendaWeek'].includes(mode)) {
         add('slotDuration', 'Time slot duration', Enum, {required: true, options: ['5', '10', '15', '30'],
           translatedOptions: Object.fromEntries([5, 10, 15, 30].map(n => [String(n), `${n} min`]))});
@@ -54,9 +60,19 @@ define('calendar-plus:views/calendar/modals/settings', [
       const data = this.recordView.processFetch();
       if (this.recordView.validate()) return;
       const values = Object.fromEntries(this.settingNames.map(name => [name,
-        ['slotDuration', 'scrollHour'].includes(name) ? Number(data[name]) : data[name] === true]));
+        ['slotDuration', 'scrollHour'].includes(name) ? Number(data[name]) :
+          ['visibleTimeStart', 'visibleTimeEnd'].includes(name) ? data[name]?.trim() : data[name] === true]));
       if (values.slotDuration != null && ![5, 10, 15, 30].includes(values.slotDuration) ||
           values.scrollHour != null && (!Number.isInteger(values.scrollHour) || values.scrollHour < 0 || values.scrollHour > 23)) return;
+      if (this.settingNames.includes('visibleTimeStart')) {
+        const range = Definitions.timeRange(values);
+        if (!range) {
+          Espo.Ui.error(this.translate('Invalid visible time range', 'messages', 'Calendar'));
+          return;
+        }
+        values.visibleTimeStart = range.start.slice(0, 5);
+        values.visibleTimeEnd = range.end.slice(0, 5);
+      }
       const preferences = this.getPreferences();
       const previous = preferences.get('calendarPlusViewSettings');
       const key = Definitions.viewSettingsKey(preferences, this.options.mode);
