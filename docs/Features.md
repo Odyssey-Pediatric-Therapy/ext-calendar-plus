@@ -41,6 +41,8 @@ Additional per-view settings:
 - Tooltip detail switches: attendees (including task collaborators), assignee, location, and status can each be hidden. Times and the event title remain visible. Administrator tooltip restrictions still apply.
 - Timeline row spacing: Compact, Comfortable (existing spacing), or Spacious. This changes vertical spacing independently of the administrator's horizontal event gap.
 
+- **Show completed events** is a separate per-view switch under **People and Events**, enabled by default. Turning it off hides statuses listed in each event type's `completedStatusList`, including custom types.
+
 - **Show canceled events** is a separate per-view switch under **People and Events**, enabled by default. It uses each entity type's configured canceled statuses across all calendar modes. Completed events and declined attendee responses are handled separately.
 
 - Declined invitations remain visible with canceled-style faded colors and a red strikethrough. This reflects the signed-in user's response, independently of other attendees and the event's canceled status. The Show declined events switch can still hide them.

@@ -44,7 +44,7 @@ function calendarFixture() {
         links: { users: { entity: 'User' } },
       },
     },
-    scopes: { Task: { canceledStatusList: ['Canceled'] } },
+    scopes: { Task: { canceledStatusList: ['Canceled'], completedStatusList: ['Completed'] } },
   };
   const config = {};
   const view = {
@@ -142,6 +142,11 @@ test('warnings explain hidden people, event types and statuses without changing 
   const before = JSON.stringify(state);
   assert.equal(visibility.creationWarning(view, 'Task', attributes), 'Created event status hidden');
   assert.equal(JSON.stringify(state), before);
+  state.calendarPlusViewSettings['view:shared'] = { showCompletedEvents: false };
+  attributes.status = 'Completed';
+  assert.equal(visibility.creationWarning(view, 'Task', attributes), 'Created event status hidden');
+  state.calendarPlusViewSettings['view:shared'].showCompletedEvents = true;
+  assert.equal(visibility.creationWarning(view, 'Task', attributes), null);
 });
 
 class Element {

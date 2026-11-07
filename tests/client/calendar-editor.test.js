@@ -918,6 +918,7 @@ test('view Settings exposes relevant controls and honors admin feature gates', (
     'eventTextSize',
     'showDeclinedEvents',
     'showCanceledEvents',
+    'showCompletedEvents',
     'rememberHiddenPeople',
     'showTooltips',
     'tooltipAttendees',
@@ -937,6 +938,7 @@ test('view Settings exposes relevant controls and honors admin feature gates', (
     'eventTextSize',
     'showDeclinedEvents',
     'showCanceledEvents',
+    'showCompletedEvents',
   ]);
   const timeline = settingsFixture({ mode: 'timeline' });
   assert.deepEqual(Array.from(timeline.view.settingNames), [
@@ -947,6 +949,7 @@ test('view Settings exposes relevant controls and honors admin feature gates', (
     'eventTextSize',
     'showDeclinedEvents',
     'showCanceledEvents',
+    'showCompletedEvents',
     'dayBoundary',
     'timelineRowHeight',
     'showTooltips',
@@ -978,6 +981,7 @@ test('view Settings saves one view atomically, preserves hidden values, and appl
     eventTextSize: 'medium',
     showDeclinedEvents: true,
     showCanceledEvents: true,
+    showCompletedEvents: true,
     rememberHiddenPeople: true,
     tooltipAttendees: true,
     tooltipAssignee: true,
@@ -1141,6 +1145,7 @@ test('view Settings groups related controls into labeled panels and omits unavai
     'showInactiveUsers',
     'showDeclinedEvents',
     'showCanceledEvents',
+    'showCompletedEvents',
     'rememberHiddenPeople',
   ]);
 
@@ -1443,4 +1448,47 @@ test('saving with hidden tooltip details retains their values when fields are om
   assert.equal(saved.tooltipAssignee, true);
   assert.equal(saved.tooltipLocation, false);
   assert.equal(saved.tooltipStatus, true);
+});
+
+test('completed-event visibility uses each entity metadata independently from canceled statuses', async () => {
+  const settings = { showCompletedEvents: false };
+  const view = {
+    mode: 'timeline',
+    getPreferences: () => ({ get: () => ({ timeline: settings }) }),
+    getEventTypeCompletedStatusList: (scope) =>
+      ({ Task: ['Completed'], Meeting: ['Held'], CustomEvent: ['Done', 'Closed'] })[scope] || [],
+    getEventTypeCanceledStatusList: () => ['Canceled'],
+  };
+  const events = [
+    { scope: 'Task', status: 'Completed' },
+    { extendedProps: { scope: 'Meeting', status: 'Held' } },
+    { scope: 'CustomEvent', status: 'Done' },
+    { scope: 'CustomEvent', status: 'Closed' },
+    { scope: 'Task', status: 'Canceled' },
+    { scope: 'Task', status: 'In Progress' },
+    { scope: 'UnknownEvent', status: 'Completed' },
+    { type: 'background', scope: 'Task', status: 'Completed' },
+  ];
+  assert.equal(definitions.shouldFilterEvents(view), true);
+  assert.deepEqual(Array.from(await definitions.filterEvents(view, events)), events.slice(4));
+  settings.showCanceledEvents = false;
+  assert.deepEqual(Array.from(await definitions.filterEvents(view, events)), events.slice(5));
+  view.searchResult = { scope: 'CustomEvent', id: 'target' };
+  const result = { scope: 'CustomEvent', status: 'Done', recordId: 'target' };
+  assert.deepEqual(Array.from(await definitions.filterEvents(view, [result])), [result]);
+  settings.showCompletedEvents = true;
+  settings.showCanceledEvents = true;
+  assert.equal(definitions.shouldFilterEvents(view), false);
+  assert.equal(await definitions.filterEvents(view, events), events);
+});
+
+test('Show completed events defaults on and saves independently for each calendar', async () => {
+  const { editor, state } = fixture({ source: 'personal', mode: 'month', routeMode: 'month' });
+  editor.setup();
+  assert.equal(editor.model.attributes.showCompletedEvents, true);
+  editor.model.attributes.showCompletedEvents = false;
+  await editor.actionSave();
+  assert.equal(state.calendarPlusViewSettings.month.showCompletedEvents, false);
+  const stored = settingsFixture({ stored: { showCompletedEvents: false } });
+  assert.equal(stored.view.model.attributes.showCompletedEvents, false);
 });

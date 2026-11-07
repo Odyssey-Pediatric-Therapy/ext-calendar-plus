@@ -137,6 +137,7 @@ define('calendar-plus:calendar-definitions', [], () => {
 
     return (
       settings.showCanceledEvents === false ||
+      settings.showCompletedEvents === false ||
       settings.showDeclinedEvents === false ||
       canReadResponses
     );
@@ -145,16 +146,20 @@ define('calendar-plus:calendar-definitions', [], () => {
   const filterEvents = async (view, events) => {
     const settings = viewSettings(view.getPreferences(), view.mode || 'timeline');
 
-    if (settings.showCanceledEvents === false) {
+    if (settings.showCanceledEvents === false || settings.showCompletedEvents === false) {
       events = events.filter((event) => {
         if (event.type === 'background' || event.display === 'inverse-background') return true;
 
         if (isSearchResult(view, event)) return true;
 
         const props = event.extendedProps || event;
-        const statuses = view.getEventTypeCanceledStatusList?.(props.scope) || [];
+        const canceled = view.getEventTypeCanceledStatusList?.(props.scope) || [];
+        const completed = view.getEventTypeCompletedStatusList?.(props.scope) || [];
 
-        return !statuses.includes(props.status);
+        return !(
+          (settings.showCanceledEvents === false && canceled.includes(props.status)) ||
+          (settings.showCompletedEvents === false && completed.includes(props.status))
+        );
       });
     }
 

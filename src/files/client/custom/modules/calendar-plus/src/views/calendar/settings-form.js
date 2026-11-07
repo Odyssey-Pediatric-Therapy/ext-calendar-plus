@@ -50,6 +50,7 @@ define('calendar-plus:views/calendar/settings-form', [
           : 'comfortable',
         showDeclinedEvents: stored.showDeclinedEvents !== false,
         showCanceledEvents: stored.showCanceledEvents !== false,
+        showCompletedEvents: stored.showCompletedEvents !== false,
         rememberHiddenPeople: stored.rememberHiddenPeople !== false,
         tooltipAttendees: stored.tooltipAttendees !== false,
         tooltipAssignee: stored.tooltipAssignee !== false,
@@ -72,6 +73,7 @@ define('calendar-plus:views/calendar/settings-form', [
           'showInactiveUsers',
           'showDeclinedEvents',
           'showCanceledEvents',
+          'showCompletedEvents',
           'rememberHiddenPeople',
         ],
         tooltips: [
@@ -151,6 +153,7 @@ define('calendar-plus:views/calendar/settings-form', [
       choice('eventTextSize', 'Event text size', ['small', 'medium', 'large']);
       add('showDeclinedEvents', 'Show declined events');
       add('showCanceledEvents', 'Show canceled events');
+      add('showCompletedEvents', 'Show completed events');
 
       if (inactiveUsersAvailable && (allModes || mode !== 'timeline'))
         add('rememberHiddenPeople', 'Remember hidden people');
@@ -174,7 +177,10 @@ define('calendar-plus:views/calendar/settings-form', [
           name: section.name,
           label: this.translate(section.label, 'labels', 'Calendar'),
           rows: section.rows.reduce((rows, [field], index) => {
-            if (index % 2 === 0) rows.push([field, false]);
+            // Keep the tooltip switch separate from its two-column detail options.
+            const columnIndex = section.name === 'tooltips' ? index - 1 : index;
+
+            if (columnIndex < 0 || columnIndex % 2 === 0) rows.push([field, false]);
             else rows[rows.length - 1][1] = field;
 
             return rows;
