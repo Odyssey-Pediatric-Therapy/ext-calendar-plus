@@ -1,39 +1,39 @@
 .calendar-plus-header .mode-buttons {
-    display: flex;
-    flex-wrap: nowrap;
-    max-width: 100%;
-    white-space: nowrap;
+  display: flex;
+  flex-wrap: nowrap;
+  max-width: 100%;
+  white-space: nowrap;
 }
 
 .calendar-plus-header .mode-buttons > .btn {
-    min-width: 0;
-    max-width: 220px;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  min-width: 0;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .calendar-plus-header .mode-buttons > .btn-group,
 .calendar-plus-header .mode-buttons > .btn-icon {
-    flex: 0 0 auto;
+  flex: 0 0 auto;
 }
 
 @media (min-width: 768px) {
-    .calendar-plus-header {
-        display: grid;
-        grid-template-columns: auto minmax(0, 1fr) auto;
-        align-items: center;
-    }
+  .calendar-plus-header {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+  }
 
-    .calendar-plus-header::before,
-    .calendar-plus-header::after {
-        display: none;
-    }
+  .calendar-plus-header::before,
+  .calendar-plus-header::after {
+    display: none;
+  }
 
-    .calendar-plus-header > [class*="col-"] {
-        float: none;
-        width: auto;
-        min-width: 0;
-    }
+  .calendar-plus-header > [class*='col-'] {
+    float: none;
+    width: auto;
+    min-width: 0;
+  }
 }
 
 .calendar-plus-header .mode-buttons > .cp-calendar-picker {
