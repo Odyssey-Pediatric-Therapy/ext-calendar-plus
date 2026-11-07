@@ -24,3 +24,23 @@
 - Include inactive team members when needed. Use Show inactive users in the calendar’s top-level options menu; the choice is saved per view and per user, including the default Timeline. Dynamic calendars continue resolving current team members; static calendars use their captured list. Calendar permissions still apply.
 
 - Keep a fixed calendar roster. Choose Static membership in a calendar’s configuration to capture its team members and individually selected users when saved. Later team changes do not alter the roster; save again to refresh it, or switch back to Dynamic. The inactive-user visibility option remains independent.
+
+
+Calendar view settings are available from **… → Settings** and saved separately for each user and view. The modal includes **Show inactive users** for shared calendars and **Show weekends** for all views, including Timeline. Day and Week also offer **5, 10, 15, or 30 minute slots** and **Scroll to hour** (00:00–23:00), initially using the user's existing calendar preferences. Week and Month offer a personal gradient toggle when the administrator permits gradients. All views offer a personal tooltip toggle when the administrator permits tooltips. Administrator feature switches always take priority. Save applies changes immediately; Cancel leaves stored preferences unchanged.
+
+- Limit visible hours in Day, Week, and Timeline with **Show from** and **Show until** in view Settings (for example, 08:00–15:00). Defaults to the full day. Shared Day columns use the same range; events outside it are hidden from the timed grid, and all-day events remain visible.
+
+Timeline uses a repeating daily hidden interval for the visible-hour range, compressing the overnight gaps. It can be combined with hidden weekends. These options change the display, not event dates or durations.
+
+
+Additional per-view settings:
+- Event text size: Small, Medium (existing size), or Large.
+- Timeline day boundary contrast: Subtle (existing style), Strong, or Black.
+- Show declined events: on by default. Turning this off hides events where the signed-in user's attendee response is Declined. Canceled event status alone does not hide an event. When response details are unavailable due to permissions, the event stays visible. Details use the existing cache with up to four concurrent requests.
+- Remember hidden people: on by default for shared Day, Week, and Month. When off, person filters still work for the open calendar but reset when the view is reopened.
+- Tooltip detail switches: attendees (including task collaborators), assignee, location, and status can each be hidden. Times and the event title remain visible. Administrator tooltip restrictions still apply.
+- Timeline row spacing: Compact, Comfortable (existing spacing), or Spacious. This changes vertical spacing independently of the administrator's horizontal event gap.
+
+- **Show canceled events** is a separate per-view switch under **People and Events**, enabled by default. It uses each entity type's configured canceled statuses across all calendar modes. Completed events and declined attendee responses are handled separately.
+
+- Declined invitations remain visible with canceled-style faded colors and a red strikethrough. This reflects the signed-in user's response, independently of other attendees and the event's canceled status. The Show declined events switch can still hide them.
