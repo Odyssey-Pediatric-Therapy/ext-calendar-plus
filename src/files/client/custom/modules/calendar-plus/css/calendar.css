@@ -257,3 +257,16 @@
     color: #896012;
     background: #fff0ce;
 }
+
+
+/* Separate days clearly at both hourly and daily Timeline zoom levels. */
+.cp-calendar-timeline .vis-grid.vis-vertical.vis-major,
+.cp-calendar-timeline .vis-grid.vis-vertical:is(.vis-monday, .vis-tuesday, .vis-wednesday, .vis-thursday, .vis-friday, .vis-saturday, .vis-sunday) {
+    border-left: 2px solid #000 !important;
+}
+
+.cp-calendar-timeline .vis-time-axis .vis-text.vis-major,
+.cp-calendar-timeline .vis-time-axis .vis-text.vis-minor:is(.vis-monday, .vis-tuesday, .vis-wednesday, .vis-thursday, .vis-friday, .vis-saturday, .vis-sunday) {
+    font-weight: 600;
+    color: var(--text-color, #263445);
+}

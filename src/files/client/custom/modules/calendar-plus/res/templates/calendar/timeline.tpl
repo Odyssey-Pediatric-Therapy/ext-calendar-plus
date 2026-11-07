@@ -29,4 +29,4 @@
 </div>
 {{/if}}
 
-<div class="timeline"></div>
+<div class="timeline cp-calendar-timeline"></div>
