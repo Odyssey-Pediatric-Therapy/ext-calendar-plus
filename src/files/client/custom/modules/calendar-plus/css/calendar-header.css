@@ -115,22 +115,22 @@
 }
 
 @media (max-width: 480px) {
-  .calendar-plus-header {
+  .calendar-plus-header .cp-calendar-toolbar {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .calendar-plus-header .cp-calendar-navigation {
+    justify-self: start;
     gap: 6px;
   }
 
-  .calendar-plus-header .btn-icon,
-  .calendar-plus-header .cp-calendar-options > .btn-group > .btn-text {
-    width: 28px;
-    min-width: 28px;
+  .calendar-plus-header .cp-calendar-navigation > .btn-icon {
+    width: clamp(32px, 9vw, 40px);
+    min-width: 32px;
+    height: 40px;
+    margin-left: 0;
     padding-left: 0;
     padding-right: 0;
-  }
-
-  .calendar-plus-header .cp-calendar-picker > .dropdown-toggle {
-    gap: 4px;
-    padding-left: 8px;
-    padding-right: 8px;
   }
 }
 
@@ -177,4 +177,26 @@
 .calendar-plus-header .cp-calendar-picker .dropdown-menu a {
   white-space: normal;
   overflow-wrap: anywhere;
+}
+
+@media (max-width: 480px) {
+  .calendar-plus-header .mode-buttons > .cp-calendar-picker {
+    max-width: 120px;
+  }
+
+  .calendar-plus-header .cp-calendar-picker > .dropdown-toggle {
+    height: 40px;
+    gap: 4px;
+    padding-left: 4px;
+    padding-right: 4px;
+    font-size: 12px;
+  }
+
+  .calendar-plus-header .cp-calendar-options > .btn-group > .btn-text {
+    height: 40px;
+    width: 28px;
+    min-width: 28px;
+    padding-left: 0;
+    padding-right: 0;
+  }
 }
