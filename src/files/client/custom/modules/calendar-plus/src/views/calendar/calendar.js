@@ -144,9 +144,18 @@ define('calendar-plus:views/calendar/calendar', [
 
       if (mode === 'timeline-personal') return this.trigger('change:mode', mode, true);
 
+      const previousMode = this.mode;
+      const revision = this.requestRevision;
       const result = super.selectMode(mode);
 
-      if (this.mode === mode && this.calendar) this.applyViewSettings(true);
+      if (this.mode === mode && this.calendar) {
+        this.applyViewSettings(true);
+
+        // A cached Week range can cover Day without invoking the event source again.
+        if (previousMode !== mode && this.requestRevision === revision) {
+          this.calendar.refetchEvents();
+        }
+      }
 
       return result;
     }
@@ -463,8 +472,6 @@ define('calendar-plus:views/calendar/calendar', [
 
         if (!current()) return;
 
-        this.sharedUsers = users;
-        this.assignUserColors(users);
         const allowedIds = new Set(users.map((user) => user.id));
         const merged = new Map();
         for (const event of data) {
@@ -480,7 +487,7 @@ define('calendar-plus:views/calendar/calendar', [
           merged.set(key, { ...event, userIdList: ids });
         }
         const records = [...merged.values()];
-        this.sharedEvents = this.convertToFcEvents(records)
+        const events = this.convertToFcEvents(records)
           .map((event, index) => {
             const ids = records[index].userIdList.filter((id) => allowedIds.has(id)).sort();
 
@@ -494,13 +501,17 @@ define('calendar-plus:views/calendar/calendar', [
           .filter(
             (event) => event.calendarUserIds.length || event.display === 'inverse-background',
           );
-        this.sharedEvents = await Definitions.filterEvents(
-          this,
-          this.includeSearchResult(this.sharedEvents),
-        );
+        const filtered = await Definitions.filterEvents(this, this.includeSearchResult(events));
 
         if (!current()) return;
 
+        // Publish users and events together only after all asynchronous work is current.
+        this.sharedUsers = users;
+        this.assignUserColors(users);
+        this.sharedEvents = filtered.map((event) => ({
+          ...event,
+          color: this.colorForEvent(event, event.calendarUserIds[0]),
+        }));
         callback(this.sharedEvents.map((event) => this.filteredEvent(event)));
         this.syncSharedLayout();
         Espo.Ui.notify();

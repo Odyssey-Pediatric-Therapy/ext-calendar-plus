@@ -1922,3 +1922,46 @@ test('a selected search result reveals hidden-user columns and bypasses status a
   assert.equal(JSON.stringify(state), before);
   assert.equal(view.hiddenUserIds.has('ann'), true);
 });
+
+test('a late Week response cannot replace events already loaded into shared Day columns', async () => {
+  const { view, espo } = fixture('basicWeek');
+  view.getUser = () => ({ id: 'ann' });
+  let releaseOld;
+  let filterStarted;
+  const oldFiltering = new Promise((resolve) => {
+    filterStarted = resolve;
+  });
+  view.eventTooltip.loadDetails = async ({ extendedProps }) => {
+    if (extendedProps.recordId === 'old') {
+      filterStarted();
+      return new Promise((resolve) => {
+        releaseOld = resolve;
+      });
+    }
+    return { usersColumns: { ann: { status: 'Accepted' } } };
+  };
+  espo.Ajax.getRequest = async (url, query) => [
+    {
+      id: query.from === 'old-week' ? 'old' : 'new',
+      recordId: query.from === 'old-week' ? 'old' : 'new',
+      scope: 'Meeting',
+      userIdList: ['ann'],
+      title: 'Event',
+    },
+  ];
+  let oldCallbacks = 0;
+  const oldRequest = view.fetchEvents('old-week', 'old-week-end', () => {
+    oldCallbacks++;
+  });
+  await oldFiltering;
+  view.viewMode = 'agendaDay';
+  await view.fetchEvents('new-day', 'new-day-end', () => {});
+  assert.equal(view.sharedEvents[0].id, 'new');
+  releaseOld({ usersColumns: { ann: { status: 'Accepted' } } });
+  await oldRequest;
+  assert.equal(oldCallbacks, 0);
+  assert.equal(view.sharedEvents[0].id, 'new');
+  view.renderDayColumns();
+  const ann = view.dayCalendars.find((item) => item.userId === 'ann');
+  assert.equal(ann.calendar.sources[0][0].id, 'new');
+});
