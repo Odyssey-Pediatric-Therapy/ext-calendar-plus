@@ -80,14 +80,23 @@ define('calendar-plus:calendar-definitions', [], () => {
   const viewSettings = (preferences, routeMode) =>
     preferences?.get('calendarPlusViewSettings')?.[viewSettingsKey(preferences, routeMode)] || {};
 
+  const normalizeTime = (value) => {
+    if (typeof value !== 'string') return null;
+    value = value.trim();
+    if (!/^(?:\d{3,4}|\d{1,2}:\d{2})$/.test(value)) return null;
+
+    const digits = value.replace(':', '').padStart(4, '0');
+    const hour = Number(digits.slice(0, 2));
+    const minute = Number(digits.slice(2));
+    if (hour > 24 || minute > 59 || (hour === 24 && minute !== 0)) return null;
+
+    return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+  };
+
   const timeRange = (settings) => {
     const parse = (value) => {
-      if (typeof value !== 'string' || !/^(?:[01]\d|2[0-3]):?[0-5]\d$|^24:?00$/.test(value))
-        return null;
-
-      const digits = value.replace(':', '');
-
-      return `${digits.slice(0, 2)}:${digits.slice(2)}:00`;
+      const time = normalizeTime(value);
+      return time ? `${time}:00` : null;
     };
 
     const start = parse(settings.visibleTimeStart ?? '00:00');
@@ -244,6 +253,7 @@ define('calendar-plus:calendar-definitions', [], () => {
     membershipSelection,
     viewSettings,
     timeRange,
+    normalizeTime,
     applyAppearance,
     filterEvents,
     shouldFilterEvents,

@@ -12,7 +12,9 @@ function load(file, dependencies = {}, espo = {}) {
         ...names.map((name) =>
           name === 'calendar-plus:views/calendar/settings-form'
             ? load('views/calendar/settings-form.js', dependencies, espo)
-            : dependencies[name],
+            : name === 'calendar-plus:views/calendar/fields/time'
+              ? load('views/calendar/fields/time.js', dependencies, espo)
+              : dependencies[name],
         ),
       );
     },
@@ -1491,4 +1493,51 @@ test('Show completed events defaults on and saves independently for each calenda
   assert.equal(state.calendarPlusViewSettings.month.showCompletedEvents, false);
   const stored = settingsFixture({ stored: { showCompletedEvents: false } });
   assert.equal(stored.view.model.attributes.showCompletedEvents, false);
+});
+
+test('time inputs normalize compact hours on fetch and preserve invalid input for validation', () => {
+  class Varchar {
+    fetch() {
+      return { [this.name]: this.value };
+    }
+  }
+  const Time = load('views/calendar/fields/time.js', {
+    'views/fields/varchar': Varchar,
+    'calendar-plus:calendar-definitions': definitions,
+  });
+  for (const [input, expected] of [
+    ['0800', '08:00'],
+    ['300', '03:00'],
+    ['8:00', '08:00'],
+    ['930', '09:30'],
+    [' 1500 ', '15:00'],
+    ['2400', '24:00'],
+    ['08:00', '08:00'],
+    ['2500', null],
+    ['360', null],
+    ['2401', null],
+    ['', null],
+    ['abc', null],
+  ]) {
+    const field = new Time();
+    field.name = 'visibleTimeStart';
+    field.value = input;
+    let displayed = input;
+    field.$element = {
+      val(value) {
+        displayed = value;
+      },
+    };
+    assert.equal(definitions.normalizeTime(input), expected);
+    assert.equal(field.fetch().visibleTimeStart, expected ?? input);
+    assert.equal(displayed, expected ?? input);
+  }
+});
+
+test('visible time range saves three-digit input with its leading zero and colon', async () => {
+  const { view, state } = settingsFixture();
+  Object.assign(view.model.attributes, { visibleTimeStart: '300', visibleTimeEnd: '1500' });
+  await view.actionSave();
+  assert.equal(state.calendarPlusViewSettings['view:grid'].visibleTimeStart, '03:00');
+  assert.equal(state.calendarPlusViewSettings['view:grid'].visibleTimeEnd, '15:00');
 });

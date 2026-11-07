@@ -1,9 +1,9 @@
 define('calendar-plus:views/calendar/settings-form', [
   'views/fields/bool',
   'views/fields/enum',
-  'views/fields/varchar',
+  'calendar-plus:views/calendar/fields/time',
   'calendar-plus:calendar-definitions',
-], (Bool, Enum, Varchar, Definitions) => {
+], (Bool, Enum, Time, Definitions) => {
   // Shared by the calendar editor and the settings form; preferences stay keyed by calendar ID.
   return class {
     constructor(view) {
@@ -110,8 +110,8 @@ define('calendar-plus:views/calendar/settings-form', [
       add('showWeekends', 'Show weekends');
 
       if (allModes || ['agendaDay', 'agendaWeek', 'timeline'].includes(mode)) {
-        add('visibleTimeStart', 'Show from', Varchar, { required: true, maxLength: 5 });
-        add('visibleTimeEnd', 'Show until', Varchar, { required: true, maxLength: 5 });
+        add('visibleTimeStart', 'Show from', Time, { required: true, maxLength: 5 });
+        add('visibleTimeEnd', 'Show until', Time, { required: true, maxLength: 5 });
       }
 
       if (allModes || ['agendaDay', 'agendaWeek'].includes(mode)) {
