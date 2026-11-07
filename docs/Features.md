@@ -24,3 +24,6 @@
 - Include inactive team members when needed. Use Show inactive users in the calendar’s top-level options menu; the choice is saved per view and per user, including the default Timeline. Dynamic calendars continue resolving current team members; static calendars use their captured list. Calendar permissions still apply.
 
 - Keep a fixed calendar roster. Choose Static membership in a calendar’s configuration to capture its team members and individually selected users when saved. Later team changes do not alter the roster; save again to refresh it, or switch back to Dynamic. The inactive-user visibility option remains independent.
+
+
+Calendar view settings are available from **… → Settings** and saved separately for each user and view. The modal includes **Show inactive users** for shared calendars and **Show weekends** for all views, including Timeline. Day and Week also offer **5, 10, 15, or 30 minute slots** and **Scroll to hour** (00:00–23:00), initially using the user's existing calendar preferences. Week and Month offer a personal gradient toggle when the administrator permits gradients. All views offer a personal tooltip toggle when the administrator permits tooltips. Administrator feature switches always take priority. Save applies changes immediately; Cancel leaves stored preferences unchanged.

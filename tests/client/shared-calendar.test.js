@@ -82,7 +82,7 @@ function fixture(savedMode = 'basicDay', tasksAllDay) {
   });
   let EventTooltip;
   vm.runInNewContext(readFileSync(new URL('../../src/files/client/custom/modules/calendar-plus/src/views/calendar/event-tooltip.js', import.meta.url), 'utf8'), {
-    define: (name, dependencies, factory) => { EventTooltip = factory(); }, document, setTimeout, clearTimeout,
+    define: (name, dependencies, factory) => { EventTooltip = factory(definitions); }, document, setTimeout, clearTimeout,
   });
   vm.runInNewContext(readFileSync(new URL('../../src/files/client/custom/modules/calendar-plus/src/views/calendar/calendar.js', import.meta.url), 'utf8'), {
     define: (name, dependencies, factory) => { View = factory(BaseCalendar, {Calendar: FakeCalendar}, colors, EventTooltip, definitions); },
@@ -1097,4 +1097,40 @@ test('completed and canceled shared events shade both gradient colors and solid 
     }
     assert.equal(shades.every(([, amount]) => amount === 0.4), true);
   }
+});
+
+
+test('per-view gradient and tooltip switches honor admin gates and remain isolated from other views', () => {
+  const {view} = fixture('basicWeek');
+  view.viewMode = 'agendaWeek';
+  const settings = {'view:saved': {showGradient: false, showTooltips: false}, 'view:other': {showGradient: true, showTooltips: true}};
+  view.getPreferences = () => ({get: key => key === 'calendarPlusViewSettings' ? settings : key === 'calendarViewDataList' ? [{id: 'saved', name: 'Saved'}, {id: 'other', name: 'Other'}] : undefined});
+  assert.equal(view.usePersonGradient(), false);
+  assert.equal(view.eventTooltip.enabled(), false);
+  view.mode = 'view-other';
+  assert.equal(view.usePersonGradient(), true);
+  assert.equal(view.eventTooltip.enabled(), true);
+  view.getConfig = () => ({get: () => false});
+  assert.equal(view.usePersonGradient(), false);
+  assert.equal(view.eventTooltip.enabled(), false);
+});
+
+test('saved view settings apply slot duration, weekends and midnight scroll to the calendar', () => {
+  const {view} = fixture('basicWeek');
+  view.baseSlotDuration = 30; view.baseScrollHour = 6;
+  view.getPreferences = () => ({get: key => key === 'calendarPlusViewSettings' ? {
+    'view:saved': {showWeekends: false, slotDuration: 5, scrollHour: 0},
+  } : key === 'calendarViewDataList' ? [{id: 'saved', name: 'Saved'}] : undefined});
+  const options = {};
+  view.calendar = {batchRendering: fn => fn(), setOption: (key, value) => { options[key] = value; }};
+  view.applyViewSettings();
+  assert.equal(options.weekends, false);
+  assert.equal(options.slotDuration, '00:05:00');
+  assert.equal(options.snapDuration, 300000);
+  assert.equal(options.scrollTime, '00:00:00');
+  view.mode = 'agendaDay';
+  view.applyViewSettings();
+  assert.equal(options.weekends, true);
+  assert.equal(options.slotDuration, '00:30:00');
+  assert.equal(options.scrollTime, '06:00:00');
 });

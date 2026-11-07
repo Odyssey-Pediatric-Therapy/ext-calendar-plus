@@ -5,41 +5,20 @@ define('calendar-plus:views/calendar/mode-buttons', [
     template = 'calendar-plus:calendar/mode-buttons';
 
     events = {
-      'click [data-action="toggleInactiveUsers"]': function (event) {
-        event.preventDefault();
-        event.stopPropagation();
-        void this.actionToggleInactiveUsers();
+      'click [data-action="settings"]': function (event) {
+        event.preventDefault(); event.stopPropagation(); this.actionSettings();
       },
-      'keydown [data-action="toggleInactiveUsers"]': function (event) {
+      'keydown [data-action="settings"]': function (event) {
         if (event.key !== 'Enter' && event.key !== ' ') return;
-        event.preventDefault();
-        event.stopPropagation();
-        void this.actionToggleInactiveUsers();
+        event.preventDefault(); event.stopPropagation(); this.actionSettings();
       },
     };
 
-    async actionToggleInactiveUsers() {
+    actionSettings() {
       const parent = this.getCalendarParentView();
-      if (this.savingInactiveUsers || !this.data().inactiveUsersAvailable) return;
-      const preferences = this.getPreferences();
-      const previous = preferences.get('calendarPlusViewSettings');
-      const key = Definitions.viewSettingsKey(preferences, this.mode);
-      const next = {...(previous || {}), [key]: {...(previous?.[key] || {}),
-        showInactiveUsers: !Definitions.showInactiveUsers(preferences, this.mode)}};
-      this.savingInactiveUsers = true;
-      try {
-        await preferences.save({calendarPlusViewSettings: next}, {patch: true, wait: true});
-      } catch (error) {
-        preferences.set('calendarPlusViewSettings', previous);
-        Espo.Ui.error(this.translate('Could not save view settings', 'messages', 'Calendar'));
-        return;
-      } finally {
-        this.savingInactiveUsers = false;
-      }
-      if (!parent.sharedRemoved && !parent.removed) {
-        this.reRender();
-        parent.actionRefresh();
-      }
+      this.createView('settingsModal', 'calendar-plus:views/calendar/modals/settings', {
+        calendar: parent, mode: this.mode, inactiveUsersAvailable: this.data().inactiveUsersAvailable,
+      }, view => view.render());
     }
 
     getModeDataList(originalOrder) {

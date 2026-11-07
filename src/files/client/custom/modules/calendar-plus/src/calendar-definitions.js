@@ -29,7 +29,9 @@ define('calendar-plus:calendar-definitions', [], () => {
     const item = find(preferences, routeMode);
     return item ? `view:${item.id}` : routeMode;
   };
+  const viewSettings = (preferences, routeMode) =>
+    preferences?.get('calendarPlusViewSettings')?.[viewSettingsKey(preferences, routeMode)] || {};
   const showInactiveUsers = (preferences, routeMode) =>
     preferences.get('calendarPlusViewSettings')?.[viewSettingsKey(preferences, routeMode)]?.showInactiveUsers === true;
-  return {list, normalizeMode, sharedTimeline, find, viewSettingsKey, showInactiveUsers, membershipSelection};
+  return {list, normalizeMode, sharedTimeline, find, viewSettingsKey, showInactiveUsers, membershipSelection, viewSettings};
 });

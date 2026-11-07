@@ -369,3 +369,17 @@ test('static saved and default Timelines never re-expand teams and respect inact
     assert.deepEqual(plain(calls[1]), {teamIdList: [], userIdList: ['ann', 'former'], includeInactiveUsers: true});
   }
 });
+
+
+test('Timeline weekend visibility follows its view settings and restores weekends when enabled', () => {
+  const {view, preferences} = fixture();
+  view.mode = 'timeline';
+  preferences.calendarPlusViewSettings = {timeline: {showWeekends: false}};
+  const options = [];
+  view.timeline = {setOptions: value => options.push(plain(value))};
+  view.applyViewSettings();
+  assert.equal(options[0].hiddenDates[0].repeat, 'weekly');
+  preferences.calendarPlusViewSettings.timeline.showWeekends = true;
+  view.applyViewSettings();
+  assert.deepEqual(options[1].hiddenDates, []);
+});

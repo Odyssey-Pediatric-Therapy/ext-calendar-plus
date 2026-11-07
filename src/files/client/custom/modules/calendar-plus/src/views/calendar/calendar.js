@@ -5,7 +5,7 @@ define('calendar-plus:views/calendar/calendar', [
   const optionNames = [
     'slotDuration', 'slotLabelInterval', 'slotLabelFormat', 'eventTimeFormat',
     'timeZone', 'firstDay', 'scrollTime', 'snapDuration', 'nowIndicator',
-    'editable', 'selectable', 'selectMirror', 'longPressDelay', 'allDayText',
+    'weekends', 'editable', 'selectable', 'selectMirror', 'longPressDelay', 'allDayText',
     'eventClick', 'eventAllow', 'eventDrop', 'eventResize',
   ];
   return class extends Calendar {
@@ -18,11 +18,15 @@ define('calendar-plus:views/calendar/calendar', [
     selectMode(mode) {
       if (mode === 'timeline') this.getStorage().set('calendar', 'timelineType', 'shared');
       if (mode === 'timeline-personal') return this.trigger('change:mode', mode, true);
-      return super.selectMode(mode);
+      const result = super.selectMode(mode);
+      if (this.mode === mode && this.calendar) this.applyViewSettings(true);
+      return result;
     }
 
     setup() {
       super.setup();
+      this.baseSlotDuration = this.slotDuration;
+      this.baseScrollHour = this.scrollHour;
       if (this.getConfig().get('calendarPlusTasksAllDay') === false) {
         this.allDayScopeList = this.allDayScopeList.filter(scope => scope !== 'Task');
       }
@@ -45,18 +49,52 @@ define('calendar-plus:views/calendar/calendar', [
 
     afterRender() {
       // Core concatenates minutes into HH:mm:ss; FullCalendar requires two minute digits.
+      const stored = Definitions.viewSettings(this.getPreferences(), this.mode);
+      this.slotDuration = this.baseSlotDuration ?? this.slotDuration;
+      this.scrollHour = this.baseScrollHour ?? this.scrollHour;
+      if ([5, 10, 15, 30].includes(stored.slotDuration)) this.slotDuration = stored.slotDuration;
+      if (Number.isInteger(stored.scrollHour) && stored.scrollHour >= 0 && stored.scrollHour <= 23) this.scrollHour = stored.scrollHour;
       const minutes = this.slotDuration;
       this.slotDuration = String(minutes).padStart(2, '0');
       try {
-        return super.afterRender();
+        const result = super.afterRender();
+        this.applyViewSettings();
+        return result;
       } finally {
         this.slotDuration = minutes;
       }
     }
 
+    applyViewSettings(scroll = false) {
+      const settings = Definitions.viewSettings(this.getPreferences(), this.mode);
+      if (!this.calendar) return;
+      const signature = JSON.stringify([this.mode, settings]);
+      if (!scroll && this.viewSettingsCalendar === this.calendar && this.viewSettingsSignature === signature) return;
+      this.viewSettingsCalendar = this.calendar;
+      this.viewSettingsSignature = signature;
+      this.slotDuration = this.baseSlotDuration ?? this.slotDuration;
+      this.scrollHour = this.baseScrollHour ?? this.scrollHour;
+      if ([5, 10, 15, 30].includes(settings.slotDuration)) this.slotDuration = settings.slotDuration;
+      if (Number.isInteger(settings.scrollHour) && settings.scrollHour >= 0 && settings.scrollHour <= 23) this.scrollHour = settings.scrollHour;
+      this.eventTooltip?.refresh();
+      this.calendar.batchRendering(() => {
+        this.calendar.setOption('weekends', settings.showWeekends !== false);
+        this.calendar.setOption('slotDuration', `00:${String(this.slotDuration).padStart(2, '0')}:00`);
+        this.calendar.setOption('snapDuration', Number(this.slotDuration) * 60 * 1000);
+        this.calendar.setOption('scrollTime', `${String(this.scrollHour ?? 6).padStart(2, '0')}:00:00`);
+      });
+      if (scroll) {
+        this.clearDayColumns();
+        this.syncSharedLayout();
+        this.calendar.scrollToTime(`${String(this.scrollHour ?? 6).padStart(2, '0')}:00:00`);
+        if (this.dayColumnsElement) this.syncColumnScroll();
+      }
+      this.refreshEventGradients();
+    }
+
     handleScrollToNow() {
       // An explicit scroll-hour preference takes priority over today's automatic scroll.
-      if (this.options.scrollHour != null || this.getPreferences().get('calendarScrollHour') != null) return;
+      if (Definitions.viewSettings(this.getPreferences(), this.mode).scrollHour != null || this.options.scrollHour != null || this.getPreferences().get('calendarScrollHour') != null) return;
       return super.handleScrollToNow();
     }
 
@@ -104,7 +142,8 @@ define('calendar-plus:views/calendar/calendar', [
 
     usePersonGradient() {
       return ['agendaWeek', 'month'].includes(this.viewMode) &&
-        this.getConfig().get('calendarPlusColorGradientEnabled') !== false;
+        this.getConfig().get('calendarPlusColorGradientEnabled') !== false &&
+        Definitions.viewSettings(this.getPreferences(), this.mode).showGradient !== false;
     }
 
     statusColor(color, event) {
@@ -186,6 +225,8 @@ define('calendar-plus:views/calendar/calendar', [
     }
 
     updateDate() {
+      // Core creates FullCalendar asynchronously, after afterRender returns.
+      this.applyViewSettings();
       super.updateDate();
       this.syncSharedLayout();
     }

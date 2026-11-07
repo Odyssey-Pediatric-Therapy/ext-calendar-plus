@@ -3,8 +3,8 @@
         "Create Timeline": "Create Timeline",
         "Edit Timeline": "Edit Timeline",
         "Calendar users": "Calendar users",
-        "Hide person events": "Hide this person’s events",
-        "Show person events": "Show this person’s events",
+        "Hide person events": "Hide this person\u2019s events",
+        "Show person events": "Show this person\u2019s events",
         "Show all people": "Show all",
         "Hide all people": "Hide all",
         "Create Calendar": "Create Calendar",
@@ -24,7 +24,14 @@
         "Show inactive users": "Show inactive users",
         "Calendar Membership": "Membership",
         "Dynamic Membership": "Dynamic (follow team changes)",
-        "Static Membership": "Static (capture users on save)"
+        "Static Membership": "Static (capture users on save)",
+        "Settings": "Settings",
+        "Calendar Settings": "Calendar Settings",
+        "Show weekends": "Show weekends",
+        "Time slot duration": "Time slot duration",
+        "Scroll to hour": "Scroll to hour",
+        "Show color gradient": "Show color gradient",
+        "Show tooltips": "Show tooltips"
     },
     "messages": {
         "Select Timeline Members": "Enter a name and select at least one team or user.",

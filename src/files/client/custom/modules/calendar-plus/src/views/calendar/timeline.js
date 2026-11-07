@@ -1,6 +1,11 @@
 define('calendar-plus:views/calendar/timeline', [
   'crm:views/calendar/timeline', 'calendar-plus:calendar-definitions', 'calendar-plus:views/calendar/event-tooltip',
 ], (Timeline, Definitions, EventTooltip) => {
+  // vis requires concrete local dates to anchor a weekly hidden interval.
+  // This Saturday-to-Monday reference repeats every week, in every year.
+  const WEEKEND_START_REFERENCE = '2026-11-07 00:00:00';
+  const WEEKEND_END_REFERENCE = '2026-11-09 00:00:00';
+
   return class extends Timeline {
     template = 'calendar-plus:calendar/timeline';
 
@@ -24,6 +29,20 @@ define('calendar-plus:views/calendar/timeline', [
         this.eventAppearances.clear();
         this.tooltipEvents.clear();
       });
+    }
+
+    applyViewSettings() {
+      const settings = Definitions.viewSettings(this.getPreferences(), this.mode || 'timeline');
+      this.eventTooltip.refresh();
+      const showWeekends = settings.showWeekends !== false;
+      if (!this.timeline || this.weekendTimeline === this.timeline && this.timelineShowWeekends === showWeekends) return;
+      const apply = !showWeekends || this.timelineShowWeekends === false;
+      this.weekendTimeline = this.timeline;
+      this.timelineShowWeekends = showWeekends;
+      if (!apply) return;
+      this.timeline.setOptions({hiddenDates: settings.showWeekends === false ? [
+        {start: WEEKEND_START_REFERENCE, end: WEEKEND_END_REFERENCE, repeat: 'weekly'},
+      ] : []});
     }
 
     createView(name, view, options, callback) {
@@ -148,6 +167,7 @@ define('calendar-plus:views/calendar/timeline', [
         if (this.removed || revision !== this.fetchRevision) return;
         callback(events);
         if (this.timeline) {
+          this.applyViewSettings();
           const isNew = this.tooltipTimeline !== this.timeline;
           const configuredGap = this.getConfig().get('calendarPlusTimelineEventGap');
           const gap = Number.isFinite(configuredGap) ? Math.max(0, Math.min(100, Math.round(configuredGap))) : 0;

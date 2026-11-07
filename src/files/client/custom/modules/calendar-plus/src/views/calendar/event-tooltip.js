@@ -1,4 +1,4 @@
-define('calendar-plus:views/calendar/event-tooltip', [], () => {
+define('calendar-plus:views/calendar/event-tooltip', ['calendar-plus:calendar-definitions'], Definitions => {
   let nextId = 0;
   return class {
     constructor(view) {
@@ -41,7 +41,8 @@ define('calendar-plus:views/calendar/event-tooltip', [], () => {
     }
 
     enabled() {
-      return this.view.getConfig().get('calendarPlusTooltipEnabled') !== false;
+      return this.view.getConfig().get('calendarPlusTooltipEnabled') !== false &&
+        (!Definitions || Definitions.viewSettings(this.view.getPreferences?.(), this.view.mode || 'timeline').showTooltips !== false);
     }
 
     showDelay() {

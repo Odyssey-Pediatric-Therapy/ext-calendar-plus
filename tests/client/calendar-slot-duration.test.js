@@ -27,7 +27,7 @@ function fixture(minutes, mode, fail = false) {
     setTimeout: callback => { if (fail) throw new Error('render failure'); scheduled.push(callback); },
   });
   vm.runInNewContext(read('src/files/client/custom/modules/calendar-plus/src/views/calendar/calendar.js'), {
-    define: (name, deps, factory) => { render = factory(Base, fullCalendar, {}, class {}); },
+    define: (name, deps, factory) => { render = factory(Base, fullCalendar, {}, class {}, {viewSettings: () => ({})}); },
   });
   const view = new render();
   Object.assign(view, {
@@ -36,6 +36,7 @@ function fixture(minutes, mode, fail = false) {
     colors: {'': '#558BBD'}, rangeSeparator: ' – ',
     $el: {find: () => ({get: () => ({})})},
     getDateTime: () => ({timeFormat: 'HH:mm', weekStart: 1, timeZone: 'America/Denver'}),
+    getPreferences: () => ({}), applyViewSettings() {},
     handleScrollToNow() {}, updateDate() {},
   });
   return {view, scheduled, options: () => options};

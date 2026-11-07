@@ -316,48 +316,6 @@ function inactiveMenuFixture(state = {}, mode = 'view-grid', fail = false) {
   return {view, parent, saves, state, errors};
 }
 
-test('top-level inactive-user toggle saves per view without changing memberships or other views', async () => {
-  const state = {calendarPlusViewSettings: {'view:other': {showInactiveUsers: true}}};
-  const {view, parent, saves} = inactiveMenuFixture(state);
-  assert.equal(view.data().inactiveUsersAvailable, true);
-  assert.equal(view.data().showInactiveUsers, false);
-  await view.actionToggleInactiveUsers();
-  assert.equal(state.calendarPlusViewSettings['view:grid'].showInactiveUsers, true);
-  assert.equal(state.calendarPlusViewSettings['view:other'].showInactiveUsers, true);
-  assert.equal(view.data().showInactiveUsers, true);
-  assert.equal(saves[0].options.patch, true);
-  assert.equal(saves[0].options.wait, true);
-  assert.equal(parent.refreshes, 1);
-  await view.actionToggleInactiveUsers();
-  assert.equal(state.calendarPlusViewSettings['view:grid'].showInactiveUsers, false);
-  assert.equal(state.calendarViewDataList.length, 1);
-  const anotherUser = inactiveMenuFixture();
-  assert.equal(anotherUser.view.data().showInactiveUsers, false);
-});
-
-test('default Timeline has its own inactive toggle and failed saves restore the previous setting', async () => {
-  const current = inactiveMenuFixture({}, 'timeline');
-  await current.view.actionToggleInactiveUsers();
-  assert.equal(current.state.calendarPlusViewSettings.timeline.showInactiveUsers, true);
-  assert.equal(current.state.calendarPlusViewSettings['view:grid'], undefined);
-  const previous = {'view:grid': {showInactiveUsers: true}};
-  const failed = inactiveMenuFixture({calendarPlusViewSettings: previous}, 'view-grid', true);
-  await failed.view.actionToggleInactiveUsers();
-  assert.equal(failed.state.calendarPlusViewSettings, previous);
-  assert.equal(failed.parent.refreshes, undefined);
-  assert.equal(failed.errors.length, 1);
-});
-
-test('inactive toggles are unavailable for personal views or calendar users without shared-view permission', async () => {
-  const {view, saves} = inactiveMenuFixture({}, 'agendaWeek');
-  assert.equal(!!view.data().inactiveUsersAvailable, false);
-  await view.actionToggleInactiveUsers();
-  view.mode = 'view-grid';
-  view.isCustomViewAvailable = false;
-  await view.actionToggleInactiveUsers();
-  assert.equal(saves.length, 0);
-});
-
 test('inactive-user choice follows a saved calendar ID across type changes and stays outside its membership dialog', () => {
   const {editor, state} = fixture({id: 'grid', source: 'calendar'});
   state.calendarPlusViewSettings = {'view:grid': {showInactiveUsers: true}};
@@ -369,7 +327,7 @@ test('inactive-user choice follows a saved calendar ID across type changes and s
   state.calendarPlusList = [{id: 'grid', name: 'Timeline'}];
   assert.equal(definitions.showInactiveUsers(editor.getPreferences(), 'view-timeline-grid'), true);
   const template = readFileSync(new URL('../res/templates/calendar/mode-buttons.tpl', root), 'utf8');
-  assert.equal(template.includes('data-action="toggleInactiveUsers"'), true);
+  assert.equal(template.includes('data-action="settings"'), true);
 });
 
 test('calendar user picker includes inactive internal users only when enabled without losing team filters', () => {
@@ -385,12 +343,12 @@ test('calendar user picker includes inactive internal users only when enabled wi
 });
 
 
-test('inactive-user menu toggle supports Enter and Space without activating on unrelated keys', () => {
+test('settings menu supports Enter and Space without activating on unrelated keys', () => {
   const {view} = inactiveMenuFixture();
   let toggles = 0;
-  view.actionToggleInactiveUsers = () => toggles++;
+  view.actionSettings = () => toggles++;
   for (const key of ['Enter', ' ', 'Escape']) {
-    view.events['keydown [data-action="toggleInactiveUsers"]'].call(view, {key, preventDefault() {}, stopPropagation() {}});
+    view.events['keydown [data-action="settings"]'].call(view, {key, preventDefault() {}, stopPropagation() {}});
   }
   assert.equal(toggles, 2);
 });
@@ -510,4 +468,79 @@ test('closing the calendar editor during static capture prevents saving a late r
   await pending;
   assert.equal(state.calendarViewDataList.length, 1);
   assert.equal(state.saved, undefined);
+});
+
+
+function settingsFixture({mode = 'agendaWeek', inactive = true, config = {}, stored = {}, fail = false} = {}) {
+  class Modal { on(name, fn) { this.onRemove = fn; } }
+  class Model { constructor(attributes) { this.attributes = attributes; } }
+  class Field { constructor(options) { this.options = options; } }
+  class Record {
+    constructor(options) { this.options = options; }
+    processFetch() { return this.options.model.attributes; }
+    validate() { return false; }
+  }
+  const errors = [];
+  const Settings = load('views/calendar/modals/settings.js', {
+    'views/modal': Modal, model: Model, 'views/record/edit-for-modal': Record,
+    'views/fields/bool': Field, 'views/fields/enum': Field, 'calendar-plus:calendar-definitions': definitions,
+  }, {Ui: {error: message => errors.push(message)}});
+  const state = {calendarViewDataList: [{id: 'grid', name: 'Grid'}], calendarScrollHour: 0,
+    calendarSlotDuration: 10, calendarPlusViewSettings: {'view:grid': stored, other: {showWeekends: false}}};
+  const saves = [];
+  const parent = {viewMode: mode, scrollHour: 6, applyViewSettings(value) { this.applied = value; },
+    actionRefresh() { this.refreshes = (this.refreshes || 0) + 1; }};
+  const view = new Settings();
+  Object.assign(view, {
+    options: {calendar: parent, mode: 'view-grid', inactiveUsersAvailable: inactive},
+    getPreferences: () => ({get: key => state[key], set: (key, value) => { state[key] = value; },
+      save: async (data, options) => { saves.push({data, options}); Object.assign(state, data); if (fail) throw new Error(); }}),
+    getConfig: () => ({get: key => config[key]}), translate: key => key, assignView() {},
+    disableButton() {}, enableButton() { this.enabled = true; }, close() { this.closed = true; },
+  });
+  view.setup();
+  return {view, state, saves, parent, errors};
+}
+
+test('view Settings exposes relevant controls and honors admin feature gates', () => {
+  const week = settingsFixture();
+  assert.deepEqual(Array.from(week.view.settingNames), ['showInactiveUsers', 'showWeekends', 'slotDuration', 'scrollHour', 'showGradient', 'showTooltips']);
+  assert.equal(week.view.model.attributes.scrollHour, '0');
+  assert.equal(week.view.model.attributes.slotDuration, '10');
+  const gated = settingsFixture({mode: 'month', inactive: false,
+    config: {calendarPlusColorGradientEnabled: false, calendarPlusTooltipEnabled: false}});
+  assert.deepEqual(Array.from(gated.view.settingNames), ['showWeekends']);
+  const timeline = settingsFixture({mode: 'timeline'});
+  assert.deepEqual(Array.from(timeline.view.settingNames), ['showInactiveUsers', 'showWeekends', 'showTooltips']);
+});
+
+test('view Settings saves one view atomically, preserves hidden values, and applies immediately', async () => {
+  const {view, state, saves, parent} = settingsFixture({stored: {showTooltips: false, futureOption: 17}});
+  assert.equal(saves.length, 0, 'opening and canceling do not write preferences');
+  Object.assign(view.model.attributes, {showWeekends: false, showInactiveUsers: true, slotDuration: '5', scrollHour: '0', showGradient: false});
+  await view.actionSave();
+  assert.deepEqual(JSON.parse(JSON.stringify(state.calendarPlusViewSettings['view:grid'])), {
+    showTooltips: false, futureOption: 17, showWeekends: false, showInactiveUsers: true,
+    slotDuration: 5, scrollHour: 0, showGradient: false,
+  });
+  assert.equal(state.calendarPlusViewSettings.other.showWeekends, false);
+  assert.equal(state.calendarScrollHour, 0);
+  assert.equal(state.calendarSlotDuration, 10);
+  assert.equal(saves[0].options.wait, true);
+  assert.equal(saves[0].options.patch, true);
+  assert.equal(parent.applied, true);
+  assert.equal(parent.refreshes, 1);
+  assert.equal(view.closed, true);
+});
+
+test('failed view Settings save restores preferences and leaves the dialog open for retry', async () => {
+  const {view, state, parent, errors} = settingsFixture({fail: true, stored: {showTooltips: false}});
+  const original = state.calendarPlusViewSettings;
+  view.model.attributes.showTooltips = true;
+  await view.actionSave();
+  assert.equal(state.calendarPlusViewSettings, original);
+  assert.equal(parent.refreshes, undefined);
+  assert.equal(view.closed, undefined);
+  assert.equal(view.enabled, true);
+  assert.equal(errors.length, 1);
 });
