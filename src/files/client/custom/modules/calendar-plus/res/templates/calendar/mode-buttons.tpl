@@ -11,9 +11,6 @@
         {{/each}}
     </ul>
 </div>
-{{#if calendarEditable}}
-<button class="btn btn-text btn-icon" data-action="editCustomView" title="{{translate 'Edit Calendar' scope='Calendar'}}"><span class="fas fa-pencil-alt fa-sm"></span></button>
-{{/if}}
 <div class="btn-group" role="group">
     <button type="button" class="btn btn-text dropdown-toggle" data-toggle="dropdown"><span class="fas fa-ellipsis-h"></span></button>
     <ul class="dropdown-menu pull-right">
@@ -33,6 +30,9 @@
         {{/each}}
         {{#if hasMoreItems}}
             <li class="divider"></li>
+        {{/if}}
+        {{#if calendarEditable}}
+            <li><a role="button" tabindex="0" data-action="editCustomView">{{translate 'Edit Calendar' scope='Calendar'}}</a></li>
         {{/if}}
         {{#if isCustomViewAvailable}}
             <li>
