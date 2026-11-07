@@ -542,3 +542,20 @@ test('Quick Add warning hooks append to native record setup handlers', () => {
     'calendar-plus:handlers/quick-create-warning',
   ]);
 });
+
+test('shared visibility predicts owner attendees only for create and never mutates event data', () => {
+  const { view } = calendarFixture();
+  const attributes = { assignedUserId: 'ann', usersIds: ['bob'], usersNames: { bob: 'Bob' } };
+  const before = JSON.stringify(attributes);
+  assert.deepEqual(Array.from(visibility.includedUserIds(view, 'Meeting', attributes)), []);
+  assert.deepEqual(
+    Array.from(visibility.includedUserIds(view, 'Meeting', attributes, { forCreate: true })),
+    ['ann'],
+  );
+  assert.equal(visibility.creationWarning(view, 'Meeting', attributes), null);
+  assert.equal(
+    JSON.stringify(attributes),
+    before,
+    'checking visibility must not add real attendees',
+  );
+});

@@ -11,6 +11,7 @@
                 title="{{translate 'Refresh'}}"
                 data-action="refresh"
             ><span class="fas fa-sync-alt"></span></button>
+            <button class="btn btn-text btn-icon" data-action="searchCalendar" title="{{translate 'Search calendar' scope='Calendar'}}" aria-label="{{translate 'Search calendar' scope='Calendar'}}"><span class="fas fa-search" aria-hidden="true"></span></button>
             <button
                 class="btn btn-text"
                 data-action="today"

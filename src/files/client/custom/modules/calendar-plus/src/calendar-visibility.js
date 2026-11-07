@@ -8,37 +8,57 @@ define('calendar-plus:calendar-visibility', ['calendar-plus:calendar-definitions
     return [calendar.options?.userId || calendar.getUser().id];
   };
 
-  const creationWarning = (calendar, scope, attributes) => {
+  const relationshipIds = (attributes, field) =>
+    Array.isArray(attributes[`${field}Ids`])
+      ? [...attributes[`${field}Ids`]]
+      : Object.keys(attributes[`${field}Names`] || {});
+
+  const assignedUserIds = (calendar, scope, attributes) => {
     const fields = calendar.getMetadata().get(['entityDefs', scope, 'fields']) || {};
-    const links = calendar.getMetadata().get(['entityDefs', scope, 'links']) || {};
-    const ids = (field) =>
-      Array.isArray(attributes[`${field}Ids`])
-        ? attributes[`${field}Ids`]
-        : Object.keys(attributes[`${field}Names`] || {});
-    const assigned =
-      fields.assignedUsers?.type === 'linkMultiple'
-        ? ids('assignedUsers')
-        : [attributes.assignedUserId].filter(Boolean);
+
+    return fields.assignedUsers?.type === 'linkMultiple'
+      ? relationshipIds(attributes, 'assignedUsers')
+      : [attributes.assignedUserId].filter(Boolean);
+  };
+
+  const eventUserIds = (calendar, scope, attributes, { forCreate = false } = {}) => {
+    const assigned = assignedUserIds(calendar, scope, attributes);
+    const attendees = relationshipIds(attributes, 'users');
     let members;
 
     if (['Meeting', 'Call'].includes(scope)) {
-      members = ids('users');
+      members = attendees;
 
-      // Espo adds assigned users to attendees on save unless this option is disabled.
-      if (calendar.getConfig().get('eventAssignedUserIsAttendeeDisabled') !== true) {
+      // Predict the save hook only for new events, not persisted search records.
+      if (forCreate && calendar.getConfig().get('eventAssignedUserIsAttendeeDisabled') !== true) {
         members.push(...assigned);
       }
     } else {
-      members = [...assigned];
+      members = assigned;
+      const fields = calendar.getMetadata().get(['entityDefs', scope, 'fields']) || {};
+      const links = calendar.getMetadata().get(['entityDefs', scope, 'links']) || {};
 
       if (scope !== 'Task' && (links.users?.entity === 'User' || fields.users?.entity === 'User')) {
-        members.push(...ids('users'));
+        members.push(...attendees);
       }
     }
 
-    if (!members.length && !assigned.length) return null;
+    return [...new Set(members.filter(Boolean))];
+  };
+
+  const includedUserIds = (calendar, scope, attributes, options) => {
     const loaded = new Set(loadedUserIds(calendar));
-    let included = [...new Set(members.filter((id) => loaded.has(id)))];
+
+    return eventUserIds(calendar, scope, attributes, options).filter((id) => loaded.has(id));
+  };
+
+  const creationWarning = (calendar, scope, attributes) => {
+    const options = { forCreate: true };
+    const members = eventUserIds(calendar, scope, attributes, options);
+    const assigned = assignedUserIds(calendar, scope, attributes);
+
+    if (!members.length && !assigned.length) return null;
+    let included = includedUserIds(calendar, scope, attributes, options);
 
     if (!included.length) return 'Created event users not in calendar';
 
@@ -93,5 +113,5 @@ define('calendar-plus:calendar-visibility', ['calendar-plus:calendar-definitions
     warning.textContent = reason ? view.translate(reason, 'messages', 'Calendar') : '';
   };
 
-  return { creationWarning, loadedUserIds, renderWarning };
+  return { creationWarning, loadedUserIds, eventUserIds, includedUserIds, renderWarning };
 });

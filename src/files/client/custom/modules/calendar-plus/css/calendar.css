@@ -348,3 +348,62 @@
     font-weight: 600;
     color: var(--text-color, #263445);
 }
+
+.cp-calendar-search .modal-dialog {
+  width: min(1000px, calc(100vw - 24px));
+}
+
+.cp-calendar-search .cp-search-results {
+  border-top: 1px solid var(--default-border-color, #dce2e9);
+  margin-top: 16px;
+  padding-top: 16px;
+}
+
+.cp-calendar-search .cp-search-table {
+  width: 100%;
+}
+
+.cp-calendar-search .cp-search-table td {
+  vertical-align: top;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.cp-calendar-search .cp-search-hint {
+  font-size: 12px;
+}
+
+
+.cp-calendar-view .cp-search-match {
+  outline: 3px solid var(--brand-primary, #2563a6);
+  outline-offset: 2px;
+}
+
+
+.cp-calendar-search .cp-search-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.cp-calendar-search .cp-search-toolbar p {
+  margin: 0;
+}
+
+
+.cp-calendar-search .cp-search-type-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+
+.cp-calendar-search .cp-search-event-type {
+  margin-top: 4px;
+}

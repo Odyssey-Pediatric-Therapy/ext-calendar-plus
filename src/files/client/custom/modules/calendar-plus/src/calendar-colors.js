@@ -52,5 +52,18 @@ define('calendar-plus:calendar-colors', [], () => {
   const gradient = (person, entity) =>
     `linear-gradient(135deg, ${person} 0%, ${person} 18%, ${entity} 34%, ${entity} 100%)`;
 
-  return { assignUsers, userColor, entityColor, gradient };
+  const contrastText = (color) => {
+    const hex = /^#([0-9a-f]{6})$/i.exec(color);
+    if (!hex) return '#fff';
+
+    const channels = [0, 2, 4].map((offset) => {
+      const channel = parseInt(hex[1].slice(offset, offset + 2), 16) / 255;
+      return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+    });
+    const luminance = channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+
+    return (luminance + 0.05) / 0.05 >= 1.05 / (luminance + 0.05) ? '#111' : '#fff';
+  };
+
+  return { assignUsers, userColor, entityColor, gradient, contrastText };
 });

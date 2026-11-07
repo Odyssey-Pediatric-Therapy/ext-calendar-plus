@@ -5,6 +5,7 @@
     <div class="col-sm-4 col-xs-5">
         <div class="btn-group range-switch-group">
             <button class="btn btn-text btn-icon" data-action="refresh" title="{{translate 'Refresh'}}" aria-label="{{translate 'Refresh'}}"><span class="fas fa-sync-alt" aria-hidden="true"></span></button>
+            <button class="btn btn-text btn-icon" data-action="searchCalendar" title="{{translate 'Search calendar' scope='Calendar'}}" aria-label="{{translate 'Search calendar' scope='Calendar'}}"><span class="fas fa-search" aria-hidden="true"></span></button>
             <button class="btn btn-text btn-icon" data-action="prev"><span class="fas fa-chevron-left"></span></button>
             <button class="btn btn-text btn-icon" data-action="next"><span class="fas fa-chevron-right"></span></button>
         </div>

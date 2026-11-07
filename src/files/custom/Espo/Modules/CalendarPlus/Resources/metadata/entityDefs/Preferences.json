@@ -17,6 +17,9 @@
         },
         "calendarPlusViewSettings": {
             "type": "jsonObject"
+        },
+        "calendarPlusSearchSettings": {
+            "type": "jsonObject"
         }
     }
 }
