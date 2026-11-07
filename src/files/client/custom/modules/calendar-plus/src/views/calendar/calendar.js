@@ -107,9 +107,20 @@ define('calendar-plus:views/calendar/calendar', [
         this.getConfig().get('calendarPlusColorGradientEnabled') !== false;
     }
 
+    statusColor(color, event) {
+      const ended = (this.getEventTypeCompletedStatusList?.(event.scope) || []).includes(event.status) ||
+        (this.getEventTypeCanceledStatusList?.(event.scope) || []).includes(event.status);
+      if (!color || !ended) return color;
+      // Match Espo's status shading; generated person colors can also use HSL.
+      if (/^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(color)) return this.shadeColor(color, 0.4);
+      const shade = this.getThemeManager().getParam('isDark') ? '#000' : '#fff';
+      return `color-mix(in srgb, ${color} 60%, ${shade} 40%)`;
+    }
+
     colorForEvent(event, userId) {
-      if (this.usePersonGradient() && userId) return this.colorForUser(userId);
-      return Colors.entityColor(this, event.scope) || event.color || (userId ? this.colorForUser(userId) : undefined);
+      const color = this.usePersonGradient() && userId ? this.colorForUser(userId) :
+        event.originalColor || Colors.entityColor(this, event.scope) || (userId ? this.colorForUser(userId) : undefined);
+      return this.statusColor(color, event) || event.color;
     }
 
     fillColor(event) {
@@ -311,14 +322,16 @@ define('calendar-plus:views/calendar/calendar', [
       const ids = (source?.calendarUserIds || event.extendedProps.calendarUserIds || [])
         .filter(id => !this.hiddenUserIds.has(id));
       const person = userId || ids[0];
-      const entity = Colors.entityColor(this, source?.scope || event.extendedProps.scope);
+      const record = {...event.extendedProps, ...source};
+      const entity = this.statusColor(record.originalColor || Colors.entityColor(this, record.scope), record);
+      const personColor = person ? this.statusColor(this.colorForUser(person), record) : null;
       const styled = !!person && !!entity && event.display !== 'inverse-background';
       const gradient = styled && this.usePersonGradient();
       element.classList.toggle('cp-event-gradient', gradient);
-      element.style.backgroundImage = gradient ? Colors.gradient(this.colorForUser(person), entity) : '';
+      element.style.backgroundImage = gradient ? Colors.gradient(personColor, entity) : '';
       if (styled) {
-        element.style.backgroundColor = gradient ? this.colorForUser(person) : entity;
-        element.style.borderColor = gradient ? this.colorForUser(person) : entity;
+        element.style.backgroundColor = gradient ? personColor : entity;
+        element.style.borderColor = gradient ? personColor : entity;
       }
     }
 
@@ -448,7 +461,7 @@ define('calendar-plus:views/calendar/calendar', [
           calendar.removeAllEventSources();
           calendar.removeAllEvents();
           calendar.addEventSource(this.sharedEvents.filter(event => event.calendarUserIds.includes(userId) ||
-            event.display === 'inverse-background').map(event => ({...event, color: Colors.entityColor(this, event.scope) || this.colorForUser(userId)})));
+            event.display === 'inverse-background').map(event => ({...event, color: this.colorForEvent(event, userId)})));
         });
       }
       if (reposition) {
