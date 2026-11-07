@@ -2,7 +2,8 @@ define('calendar-plus:views/calendar/timeline', [
   'crm:views/calendar/timeline',
   'calendar-plus:calendar-definitions',
   'calendar-plus:views/calendar/event-tooltip',
-], (Timeline, Definitions, EventTooltip) => {
+  'moment',
+], (Timeline, Definitions, EventTooltip, moment) => {
   // vis requires concrete local dates to anchor a weekly hidden interval.
   // This Saturday-to-Monday reference repeats every week, in every year.
   const WEEKEND_START_REFERENCE = '2026-11-07 00:00:00';
@@ -10,6 +11,14 @@ define('calendar-plus:views/calendar/timeline', [
 
   return class extends Timeline {
     template = 'calendar-plus:calendar/timeline';
+
+    events = {
+      ...this.events,
+      'click [data-action="searchCalendar"]': function (event) {
+        event.preventDefault();
+        this.actionSearchCalendar();
+      },
+    };
 
     setup() {
       this.eventAppearances = new Map();
@@ -53,8 +62,11 @@ define('calendar-plus:views/calendar/timeline', [
         this.timeline.redraw?.();
       }
 
-      const showWeekends = settings.showWeekends !== false;
-      const range = Definitions.timeRange(settings) || { start: '00:00:00', end: '24:00:00' };
+      const showWeekends = !!this.searchResult || settings.showWeekends !== false;
+      const range = (!this.searchResult && Definitions.timeRange(settings)) || {
+        start: '00:00:00',
+        end: '24:00:00',
+      };
       const signature = JSON.stringify([showWeekends, range]);
 
       if (
@@ -88,6 +100,54 @@ define('calendar-plus:views/calendar/timeline', [
       this.timelineHasHiddenDates = !!hiddenDates.length;
 
       if (apply) this.timeline.setOptions({ hiddenDates });
+    }
+
+    actionSearchCalendar() {
+      this.createView(
+        'searchModal',
+        'calendar-plus:views/calendar/modals/search',
+        {
+          calendar: this,
+        },
+        (view) => view.render(),
+      );
+    }
+
+    showSearchResult(record) {
+      this.searchResult = record;
+      this.applyViewSettings();
+      const date = record.dateStartDate || record.dateStart || record.dateEndDate || record.dateEnd;
+      const preview = this.includeSearchResult([])[0];
+      const target = preview?.start
+        ? moment(preview.start)
+        : record.dateStartDate || record.dateEndDate
+          ? moment.tz(date, 'YYYY-MM-DD', this.getDateTime().getTimeZone())
+          : this.getDateTime().toMoment(date);
+      this.timeline.moveTo(target.toDate(), { animation: false });
+      this.actionRefresh();
+      this.syncTimelineTooltips();
+    }
+
+    includeSearchResult(events) {
+      if (!this.searchResult?.calendarUserIds?.length) return events;
+      const result = [...events];
+
+      for (const userId of this.searchResult.calendarUserIds) {
+        if (
+          result.some((event) => Definitions.isSearchResult(this, event) && event.group === userId)
+        )
+          continue;
+        const event = this.convertEvent({ ...this.searchResult, userId });
+        if (event) result.push(event);
+      }
+
+      return result;
+    }
+
+    actionToday() {
+      this.searchResult = null;
+      this.applyViewSettings();
+      return super.actionToday();
     }
 
     createView(name, view, options, callback) {
@@ -262,6 +322,7 @@ define('calendar-plus:views/calendar/timeline', [
 
         this.eventAppearances.set(element, { event });
         this.eventTooltip.attach(element);
+        Definitions.highlightSearchResult(this);
       }
     }
 
@@ -278,6 +339,7 @@ define('calendar-plus:views/calendar/timeline', [
       const revision = (this.fetchRevision = (this.fetchRevision || 0) + 1);
 
       const deliver = async (events) => {
+        events = this.includeSearchResult(events);
         if (Definitions.shouldFilterEvents(this, events)) {
           events = await Definitions.filterEvents(this, events);
         }

@@ -114,6 +114,16 @@ define('calendar-plus:calendar-definitions', [], () => {
       : 'comfortable';
   };
 
+  const isSearchResult = (view, event) => {
+    const props = event.extendedProps || event;
+
+    return (
+      !!view.searchResult &&
+      props.scope === view.searchResult.scope &&
+      (props.recordId || event['record-id'] || props.id) === view.searchResult.id
+    );
+  };
+
   const shouldFilterEvents = (view, events = []) => {
     const settings = viewSettings(view.getPreferences(), view.mode || 'timeline');
 
@@ -138,6 +148,8 @@ define('calendar-plus:calendar-definitions', [], () => {
     if (settings.showCanceledEvents === false) {
       events = events.filter((event) => {
         if (event.type === 'background' || event.display === 'inverse-background') return true;
+
+        if (isSearchResult(view, event)) return true;
 
         const props = event.extendedProps || event;
         const statuses = view.getEventTypeCanceledStatusList?.(props.scope) || [];
@@ -176,7 +188,8 @@ define('calendar-plus:calendar-definitions', [], () => {
 
         const details = await view.eventTooltip.loadDetails({ extendedProps: { scope, recordId } });
         const declined = details?.usersColumns?.[userId]?.status === 'Declined';
-        keep[position] = !declined || settings.showDeclinedEvents !== false;
+        keep[position] =
+          !declined || settings.showDeclinedEvents !== false || isSearchResult(view, event);
 
         if (declined && keep[position]) {
           props.isDeclined = true;
@@ -193,6 +206,23 @@ define('calendar-plus:calendar-definitions', [], () => {
     await Promise.all(Array.from({ length: Math.min(4, events.length) }, worker));
 
     return keep.every(Boolean) ? events : events.filter((_, position) => keep[position]);
+  };
+
+  const highlightSearchResult = (view) => {
+    if (!view.searchResult) return;
+    let focused = false;
+
+    for (const [element, appearance] of view.eventAppearances) {
+      const props = appearance.event.extendedProps;
+      const match =
+        props.scope === view.searchResult.scope && props.recordId === view.searchResult.id;
+      element.classList.toggle('cp-search-match', match);
+
+      if (match && !focused) {
+        focused = true;
+        element.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+      }
+    }
   };
 
   const showInactiveUsers = (preferences, routeMode) =>
@@ -212,5 +242,7 @@ define('calendar-plus:calendar-definitions', [], () => {
     applyAppearance,
     filterEvents,
     shouldFilterEvents,
+    highlightSearchResult,
+    isSearchResult,
   };
 });

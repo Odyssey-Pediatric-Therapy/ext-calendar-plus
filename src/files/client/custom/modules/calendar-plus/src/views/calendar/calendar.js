@@ -33,6 +33,95 @@ define('calendar-plus:views/calendar/calendar', [
   return class extends Calendar {
     template = 'calendar-plus:calendar/calendar';
 
+    events = {
+      ...this.events,
+      'click [data-action="searchCalendar"]': function (event) {
+        event.preventDefault();
+        this.actionSearchCalendar();
+      },
+    };
+
+    actionSearchCalendar() {
+      this.createView(
+        'searchModal',
+        'calendar-plus:views/calendar/modals/search',
+        {
+          calendar: this,
+        },
+        (view) => view.render(),
+      );
+    }
+
+    showSearchResult(record) {
+      this.searchResult = record;
+      this.applyViewSettings();
+      const preview = this.includeSearchResult([])[0];
+      const date =
+        (preview?.start && this.getDateTime().toMoment(preview.start).format('YYYY-MM-DD')) ||
+        record.dateStartDate ||
+        record.dateEndDate ||
+        this.getDateTime()
+          .toMoment(record.dateStart || record.dateEnd)
+          .format('YYYY-MM-DD');
+      this.calendar.gotoDate(date);
+      this.updateDate();
+      if (record.dateStart && !record.dateStartDate) {
+        this.calendar.scrollToTime(
+          this.getDateTime().toMoment(record.dateStart).format('HH:mm:ss'),
+        );
+      }
+      this.actionRefresh();
+      Definitions.highlightSearchResult(this);
+    }
+
+    includeSearchResult(events) {
+      if (
+        !this.searchResult?.calendarUserIds?.length ||
+        events.some((event) => Definitions.isSearchResult(this, event))
+      )
+        return events;
+
+      const [event] = this.convertToFcEvents([this.searchResult]);
+      if (!event) return events;
+      const ids = this.searchResult.calendarUserIds;
+
+      // A search-only preview is read-only; opening the record uses normal permissions.
+      return [
+        ...events,
+        {
+          ...event,
+          calendarUserIds: ids,
+          visibleCalendarUserIds: ids,
+          editable: false,
+          startEditable: false,
+          durationEditable: false,
+        },
+      ];
+    }
+
+    clearSearchReveal() {
+      if (!this.searchResult) return;
+      this.searchResult = null;
+      for (const element of this.eventAppearances.keys())
+        element.classList.toggle('cp-search-match', false);
+      this.applyViewSettings();
+    }
+
+    actionPrevious() {
+      this.clearSearchReveal();
+      return super.actionPrevious();
+    }
+
+    actionNext() {
+      this.clearSearchReveal();
+      return super.actionNext();
+    }
+
+    actionToday() {
+      this.clearSearchReveal();
+      return super.actionToday();
+    }
+
     createView(name, view, options, callback) {
       return super.createView(
         name,
@@ -115,7 +204,12 @@ define('calendar-plus:views/calendar/calendar', [
 
       if (!this.calendar) return;
 
-      const signature = JSON.stringify([this.mode, settings]);
+      const signature = JSON.stringify([
+        this.mode,
+        settings,
+        this.searchResult?.scope,
+        this.searchResult?.id,
+      ]);
 
       if (
         !scroll &&
@@ -139,12 +233,15 @@ define('calendar-plus:views/calendar/calendar', [
       )
         this.scrollHour = settings.scrollHour;
 
-      const range = Definitions.timeRange(settings) || { start: '00:00:00', end: '24:00:00' };
+      const range = (!this.searchResult && Definitions.timeRange(settings)) || {
+        start: '00:00:00',
+        end: '24:00:00',
+      };
       this.eventTooltip?.refresh();
       this.calendar.batchRendering(() => {
         this.calendar.setOption('slotMinTime', range.start);
         this.calendar.setOption('slotMaxTime', range.end);
-        this.calendar.setOption('weekends', settings.showWeekends !== false);
+        this.calendar.setOption('weekends', !!this.searchResult || settings.showWeekends !== false);
         this.calendar.setOption(
           'slotDuration',
           `00:${String(this.slotDuration).padStart(2, '0')}:00`,
@@ -165,15 +262,22 @@ define('calendar-plus:views/calendar/calendar', [
     }
 
     visibleScrollTime() {
-      const range = Definitions.timeRange(
-        Definitions.viewSettings(this.getPreferences(), this.mode),
-      ) || { start: '00:00:00', end: '24:00:00' };
+      const range = (!this.searchResult &&
+        Definitions.timeRange(Definitions.viewSettings(this.getPreferences(), this.mode))) || {
+        start: '00:00:00',
+        end: '24:00:00',
+      };
 
       const minutes = (time) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
 
       const start = minutes(range.start);
       const slot = Number(this.slotDuration) || 30;
-      const target = Math.max(start, Math.min((this.scrollHour ?? 8) * 60, minutes(range.end) - 1));
+      const searchedTime =
+        this.searchResult?.dateStart && !this.searchResult.dateStartDate
+          ? this.getDateTime().toMoment(this.searchResult.dateStart).format('HH:mm:ss')
+          : null;
+      const preferred = searchedTime ? minutes(searchedTime) : (this.scrollHour ?? 8) * 60;
+      const target = Math.max(start, Math.min(preferred, minutes(range.end) - 1));
       const aligned = start + Math.floor((target - start) / slot) * slot;
 
       return `${String(Math.floor(aligned / 60)).padStart(2, '0')}:${String(aligned % 60).padStart(2, '0')}:00`;
@@ -308,6 +412,7 @@ define('calendar-plus:views/calendar/calendar', [
         const revision = ++this.requestRevision;
 
         return super.fetchEvents(from, to, async (events) => {
+          events = this.includeSearchResult(events);
           if (Definitions.shouldFilterEvents(this, events)) {
             events = await Definitions.filterEvents(this, events);
           }
@@ -380,7 +485,10 @@ define('calendar-plus:views/calendar/calendar', [
           .filter(
             (event) => event.calendarUserIds.length || event.display === 'inverse-background',
           );
-        this.sharedEvents = await Definitions.filterEvents(this, this.sharedEvents);
+        this.sharedEvents = await Definitions.filterEvents(
+          this,
+          this.includeSearchResult(this.sharedEvents),
+        );
 
         if (!current()) return;
 
@@ -475,11 +583,16 @@ define('calendar-plus:views/calendar/calendar', [
     }
 
     visibleUsers() {
-      return this.sharedUsers.filter((user) => !this.hiddenUserIds.has(user.id));
+      return this.sharedUsers.filter(
+        (user) =>
+          !this.hiddenUserIds.has(user.id) || this.searchResult?.calendarUserIds?.includes(user.id),
+      );
     }
 
     filteredEvent(event) {
-      const ids = event.calendarUserIds.filter((id) => !this.hiddenUserIds.has(id));
+      const ids = event.calendarUserIds.filter(
+        (id) => Definitions.isSearchResult(this, event) || !this.hiddenUserIds.has(id),
+      );
       const background = event.display === 'inverse-background';
 
       return {
@@ -551,6 +664,7 @@ define('calendar-plus:views/calendar/calendar', [
       }
 
       this.paintEventGradient(info.el, info.event, userId);
+      Definitions.highlightSearchResult(this);
       this.updatePersonHighlight();
     }
 

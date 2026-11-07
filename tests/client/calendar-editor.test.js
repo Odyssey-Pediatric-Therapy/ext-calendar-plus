@@ -1196,3 +1196,24 @@ test('visible declined invitations get their own class and faded style without m
   assert.equal(events[1].isDeclined, undefined);
   assert.deepEqual(styles, ['declined']);
 });
+
+test('search-revealed events bypass canceled and declined hiding without changing the saved filters', async () => {
+  const settings = { showCanceledEvents: false, showDeclinedEvents: false };
+  const view = {
+    mode: 'month',
+    searchResult: { id: 'match', scope: 'Meeting' },
+    getPreferences: () => ({ get: () => ({ month: settings }) }),
+    getUser: () => ({ id: 'me' }),
+    getEventTypeCanceledStatusList: () => ['Not Held'],
+    eventTooltip: { loadDetails: async () => ({ usersColumns: { me: { status: 'Declined' } } }) },
+  };
+  const records = [
+    { recordId: 'match', scope: 'Meeting', status: 'Not Held' },
+    { recordId: 'other', scope: 'Meeting', status: 'Not Held' },
+  ];
+  const filtered = await definitions.filterEvents(view, records);
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].recordId, 'match');
+  assert.equal(settings.showCanceledEvents, false);
+  assert.equal(settings.showDeclinedEvents, false);
+});

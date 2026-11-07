@@ -1854,3 +1854,71 @@ test('disabling remembered people keeps filters temporary and starts a reopened 
   view.setup();
   assert.equal(view.hiddenUserIds.size, 0);
 });
+
+test('a selected search result reveals hidden-user columns and bypasses status and time filters without changing preferences', async () => {
+  const { view } = fixture();
+  const state = {
+    calendarViewDataList: [{ id: 'saved', name: 'Saved' }],
+    calendarPlusViewSettings: {
+      'view:saved': {
+        showWeekends: false,
+        visibleTimeStart: '08:00',
+        visibleTimeEnd: '15:00',
+        showCanceledEvents: false,
+      },
+    },
+  };
+  view.getPreferences = () => ({ get: (key) => state[key] });
+  view.sharedUsers = [
+    { id: 'ann', name: 'Ann' },
+    { id: 'bob', name: 'Bob' },
+  ];
+  view.hiddenUserIds = new Set(['ann']);
+  view.searchResult = {
+    id: 'match',
+    scope: 'Meeting',
+    calendarUserIds: ['ann'],
+    dateStart: '2026-11-07 23:00:00',
+  };
+  view.getDateTime = () => ({ toMoment: () => ({ format: () => '23:00:00' }) });
+  const options = {};
+  view.calendar = {
+    batchRendering: (fn) => fn(),
+    setOption: (key, value) => {
+      options[key] = value;
+    },
+  };
+  view.getEventTypeCanceledStatusList = () => ['Not Held'];
+  view.shadeColor = (color) => color;
+  view.applyViewSettings();
+  assert.equal(options.weekends, true);
+  assert.equal(options.slotMinTime, '00:00:00');
+  assert.equal(options.slotMaxTime, '24:00:00');
+  assert.equal(options.scrollTime, '23:00:00');
+  assert.equal(
+    view.visibleUsers().some((user) => user.id === 'ann'),
+    true,
+  );
+  const event = {
+    id: 'Meeting-match',
+    recordId: 'match',
+    scope: 'Meeting',
+    status: 'Not Held',
+    calendarUserIds: ['ann'],
+  };
+  assert.equal(view.filteredEvent(event).display, 'block');
+  const before = JSON.stringify(state);
+  const preview = view.includeSearchResult([])[0];
+  assert.equal(preview.editable, false);
+  assert.deepEqual(Array.from(preview.calendarUserIds), ['ann']);
+  view.searchResult = null;
+  view.applyViewSettings();
+  assert.equal(options.weekends, false);
+  assert.equal(options.slotMinTime, '08:00:00');
+  assert.equal(
+    view.visibleUsers().some((user) => user.id === 'ann'),
+    false,
+  );
+  assert.equal(JSON.stringify(state), before);
+  assert.equal(view.hiddenUserIds.has('ann'), true);
+});

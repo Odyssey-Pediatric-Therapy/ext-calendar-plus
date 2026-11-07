@@ -74,3 +74,12 @@ Additional per-view settings:
 - **Show canceled events** is a separate per-view switch under **People and Events**, enabled by default. It uses each entity type's configured canceled statuses across all calendar modes. Completed events and declined attendee responses are handled separately.
 
 - Declined invitations remain visible with canceled-style faded colors and a red strikethrough. This reflects the signed-in user's response, independently of other attendees and the event's canceled status. The Show declined events switch can still hide them.
+
+
+- Search accessible calendar records using the magnifying glass beside Refresh in every calendar view. Filter by an inclusive date range, event types, title, assigned user, user/contact/lead attendees, and event status. Date searches include events overlapping the range, all-day items, and tasks with only a start or due date. Results show times, type, ownership, participants, and status with native record links and a **Show in calendar** action. Search defaults to the displayed month and loads more results on demand. It uses normal record permissions; calendar membership stays unchanged when navigating to a result. The calendar action is enabled only when a matching event user is already loaded; selecting it temporarily reveals the result across display filters without changing saved preferences.
+
+Search uses the global **List Size** (`recordsPerPage`) setting, consistent with standalone list modals. Each Load more adds that many combined results across event types, preserving descending date order; it does not multiply the visible page size by the number of types.
+
+Search results have a gear for personal column and sort options. Event title and Show in calendar remain available; optional columns include dates, assigned user, attendees, and status. Event type appears as a small entity-colored badge below the title. The initial list shows event title, dates, status, and the calendar action. Sort by date (descending by default) or title in either direction. Choices are remembered per user across calendars, and changing them reloads the search using the selected order.
+
+The Show in calendar button ignores event-type, status, legend visibility, weekend, and time-window filters when deciding availability. It is disabled, with an explanatory title, if the event has no date or no corresponding loaded calendar user. Selecting an eligible result highlights it and can add a read-only search preview when the normal feed filters it out; it never loads extra users or changes saved filters.
