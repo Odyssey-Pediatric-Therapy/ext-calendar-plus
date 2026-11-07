@@ -325,8 +325,7 @@ define('calendar-plus:views/calendar/calendar', [
       this.finishPersonDropDrag();
       this.requestRevision++;
       this.clearDayColumns();
-      this.legendElement?.remove();
-      this.legendElement = null;
+      this.clearLegend();
       this.legendButtons = new Map();
       this.eventElements.clear();
       this.eventAppearances.clear();
@@ -544,8 +543,7 @@ define('calendar-plus:views/calendar/calendar', [
 
       if (!this.isSharedTimeGrid()) {
         this.clearDayColumns();
-        this.legendElement?.remove();
-        this.legendElement = null;
+        this.clearLegend();
         this.$calendar.show();
 
         return;
@@ -768,8 +766,8 @@ define('calendar-plus:views/calendar/calendar', [
           'aria-label',
           this.translate('Calendar users', 'labels', 'Calendar'),
         );
-        this.legendElement.style.cssText =
-          'display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 0;';
+        this.legendElement.className = 'dropdown cp-person-legend';
+        this.legendElement.style.cssText = 'padding:10px 0;';
         this.$calendar.before(this.legendElement);
       }
 
@@ -778,6 +776,29 @@ define('calendar-plus:views/calendar/calendar', [
       style.textContent =
         '.cp-person-event-dimmed {opacity:.18 !important;} .cp-person-event-highlighted {outline:2px solid var(--text-color, #222);outline-offset:2px;} .cp-person-toggle:focus-visible {outline:2px solid var(--text-color, #222);outline-offset:2px;}';
       this.legendElement.append(style);
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'btn btn-default dropdown-toggle cp-person-legend-toggle';
+      toggle.setAttribute('data-toggle', 'dropdown');
+      toggle.setAttribute('aria-expanded', 'false');
+      toggle.disabled = !this.sharedUsers.length;
+      const icon = document.createElement('span');
+      icon.className = 'fas fa-users';
+      icon.setAttribute('aria-hidden', 'true');
+      const caret = document.createElement('span');
+      caret.className = 'caret';
+      caret.setAttribute('aria-hidden', 'true');
+      toggle.append(
+        icon,
+        document.createTextNode(this.translate('Calendar users', 'labels', 'Calendar')),
+        caret,
+      );
+      const items = document.createElement('div');
+      items.className = 'dropdown-menu cp-person-legend-items';
+      items.setAttribute('role', 'group');
+      items.setAttribute('aria-label', this.translate('Calendar users', 'labels', 'Calendar'));
+      this.legendElement.append(toggle, items);
+      this.legendItems = items;
       this.legendButtons = new Map();
       this.hoveredUserId = null;
       this.focusedUserId = null;
@@ -791,7 +812,8 @@ define('calendar-plus:views/calendar/calendar', [
         const badge = this.colorSwatch(user.id);
         badge.setAttribute('aria-hidden', 'true');
         button.append(badge, document.createTextNode(user.name), status);
-        button.addEventListener('click', () => {
+        button.addEventListener('click', (event) => {
+          event?.stopPropagation();
           if (!this.personDropDrag) this.setPersonVisible(user.id, this.hiddenUserIds.has(user.id));
         });
         button.addEventListener('mouseenter', () => {
@@ -811,7 +833,7 @@ define('calendar-plus:views/calendar/calendar', [
           this.updatePersonHighlight();
         });
         this.legendButtons.set(user.id, { button, status });
-        this.legendElement.append(button);
+        items.append(button);
       }
 
       if (this.sharedUsers.length) {
@@ -823,17 +845,49 @@ define('calendar-plus:views/calendar/calendar', [
           button.type = 'button';
           button.className = 'btn btn-text btn-sm';
           button.textContent = this.translate(label, 'labels', 'Calendar');
-          button.addEventListener('click', () => this.setAllPeopleVisible(visible));
-          this.legendElement.append(button);
+          button.addEventListener('click', (event) => {
+            event?.stopPropagation();
+            this.setAllPeopleVisible(visible);
+          });
+          items.append(button);
         }
       } else {
         const empty = document.createElement('span');
         empty.textContent = this.translate('No calendar users', 'messages', 'Calendar');
-        this.legendElement.append(empty);
+        items.append(empty);
       }
 
       this.refreshLegendState();
       this.updatePersonHighlight();
+      this.updateLegendLayout();
+      if (!this.legendResizeObserver && typeof ResizeObserver !== 'undefined') {
+        this.legendResizeObserver = new ResizeObserver(() => this.updateLegendLayout());
+        this.legendResizeObserver.observe(this.legendElement);
+      }
+    }
+
+    updateLegendLayout() {
+      const legend = this.legendElement;
+      if (!legend?.clientWidth || !this.legendItems) return;
+
+      // Measure the single-row buttons even while the live menu is collapsed.
+      const measure = this.legendItems.cloneNode(true);
+      measure.className = 'cp-person-legend-measure';
+      measure.setAttribute('aria-hidden', 'true');
+      measure.style.cssText =
+        'position:absolute;visibility:hidden;pointer-events:none;display:flex;flex-wrap:nowrap;align-items:center;gap:8px;width:max-content;max-width:none;top:0;left:0;';
+      legend.append(measure);
+      const requiredWidth = measure.getBoundingClientRect().width;
+      measure.remove();
+      legend.classList.toggle('cp-person-legend-compact', requiredWidth > legend.clientWidth + 1);
+    }
+
+    clearLegend() {
+      this.legendResizeObserver?.disconnect();
+      this.legendResizeObserver = null;
+      this.legendElement?.remove();
+      this.legendElement = null;
+      this.legendItems = null;
     }
 
     clearDayColumns() {

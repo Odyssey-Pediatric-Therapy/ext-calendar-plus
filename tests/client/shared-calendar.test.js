@@ -2024,3 +2024,61 @@ test('touch event taps and focus restored after closing details never schedule t
   assert.equal(timers.size, 0);
   assert.equal(Object.keys(anchor.listeners).length, 0);
 });
+
+test('compact person legend uses the same toggles and keeps the dropdown open for multiple selections', async () => {
+  const { view } = fixture('basicWeek');
+  await view.fetchEvents('from', 'to', () => {});
+  assert.equal(view.legendElement.className, 'dropdown cp-person-legend');
+  const toggle = view.legendElement.children.find((child) =>
+    child.className?.includes('cp-person-legend-toggle'),
+  );
+  const items = view.legendElement.children.find((child) =>
+    child.className?.includes('cp-person-legend-items'),
+  );
+  assert.equal(toggle['data-toggle'], 'dropdown');
+  assert.equal(toggle['aria-expanded'], 'false');
+  assert.ok(items);
+  assert.equal(items.children.length, view.sharedUsers.length + 2);
+  assert.equal(items.children[0], view.legendButtons.get('ann').button);
+  let stopped = 0;
+  view.legendButtons.get('ann').button.listeners.click({ stopPropagation: () => stopped++ });
+  assert.equal(view.hiddenUserIds.has('ann'), true);
+  items.children[items.children.length - 2].listeners.click({ stopPropagation: () => stopped++ });
+  assert.equal(view.hiddenUserIds.size, 0);
+  assert.equal(stopped, 2);
+  view.renderLegend();
+  const updated = view.legendElement.children.find((child) =>
+    child.className?.includes('cp-person-legend-items'),
+  );
+  assert.equal(updated.children.length, view.sharedUsers.length + 2);
+});
+
+test('person legend collapses based on available width and restores the full row when it fits', async () => {
+  const { view } = fixture('basicWeek');
+  await view.fetchEvents('from', 'to', () => {});
+  const legend = view.legendElement;
+  const measure = new Element();
+  let required = 650;
+  measure.getBoundingClientRect = () => ({ width: required });
+  view.legendItems.cloneNode = () => measure;
+  legend.clientWidth = 600;
+  view.updateLegendLayout();
+  assert.equal(legend.classes.has('cp-person-legend-compact'), true);
+  assert.equal(measure.removed, true);
+  legend.clientWidth = 800;
+  view.updateLegendLayout();
+  assert.equal(legend.classes.has('cp-person-legend-compact'), false);
+  required = 900; // More users or longer names also trigger consolidation on desktop.
+  view.updateLegendLayout();
+  assert.equal(legend.classes.has('cp-person-legend-compact'), true);
+  let disconnected = false;
+  view.legendResizeObserver = {
+    disconnect() {
+      disconnected = true;
+    },
+  };
+  view.clearLegend();
+  assert.equal(disconnected, true);
+  assert.equal(view.legendElement, null);
+  assert.equal(view.legendItems, null);
+});
