@@ -1067,3 +1067,34 @@ test('static Day, Week, and Month use only captured IDs while inactive visibilit
     assert.deepEqual(Array.from(view.sharedUsers), []);
   }
 });
+
+
+test('completed and canceled shared events shade both gradient colors and solid day colors', async () => {
+  for (const mode of ['basicDay', 'basicWeek', 'month']) {
+    const {view} = fixture(mode);
+    await view.fetchEvents('from', 'to', () => {});
+    view.sharedEvents = [];
+    view.colors = {Meeting: '#558BBD'};
+    view.getEventTypeCompletedStatusList = () => ['Held'];
+    view.getEventTypeCanceledStatusList = () => ['Not Held'];
+    const shades = [];
+    view.shadeColor = (color, amount) => { shades.push([color, amount]); return `faded(${color})`; };
+    for (const status of ['Held', 'Not Held', 'Planned']) {
+      const record = {scope: 'Meeting', status};
+      const ended = status !== 'Planned';
+      const person = view.colorForUser('ann');
+      const color = view.colorForEvent(record, 'ann');
+      const gradient = view.usePersonGradient();
+      assert.equal(color, ended ? `faded(${gradient ? person : '#558BBD'})` : gradient ? person : '#558BBD');
+      const element = new Element();
+      view.paintEventGradient(element, {display: 'auto', extendedProps: {...record, calendarUserIds: ['ann']}}, 'ann');
+      assert.equal(element.style.backgroundColor, color);
+      assert.equal(element.style.borderColor, color);
+      if (gradient) {
+        assert.equal(element.style.backgroundImage.includes(ended ? 'faded(#558BBD)' : '#558BBD'), true);
+        assert.equal(element.style.backgroundImage.includes(ended ? `faded(${person})` : person), true);
+      } else assert.equal(element.style.backgroundImage, '');
+    }
+    assert.equal(shades.every(([, amount]) => amount === 0.4), true);
+  }
+});
