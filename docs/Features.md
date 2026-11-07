@@ -44,3 +44,8 @@ Additional per-view settings:
 - **Show canceled events** is a separate per-view switch under **People and Events**, enabled by default. It uses each entity type's configured canceled statuses across all calendar modes. Completed events and declined attendee responses are handled separately.
 
 - Declined invitations remain visible with canceled-style faded colors and a red strikethrough. This reflects the signed-in user's response, independently of other attendees and the event's canceled status. The Show declined events switch can still hide them.
+
+
+- Warn before creating an event that the current calendar will not display because its users are excluded or hidden, or its event type/status is filtered. The advisory banner updates when assignees, attendees, status, or event type changes. It respects Espo's automatic owner-as-attendee setting and Task ownership rules. Saving remains available, with a warning notice after successful creation; calendar membership and filters are never changed automatically.
+
+Quick Add uses the same live creation warning when a main calendar is currently visible. It detects the active calendar from its connected, visible view, skips unrelated record types and existing records, and leaves Quick Add unchanged on other pages. Successful Quick Add creation refreshes that calendar and shows an explanatory notice if the event will not appear. Native create forms and permissions are retained.

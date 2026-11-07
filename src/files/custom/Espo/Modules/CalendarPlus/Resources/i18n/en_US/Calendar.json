@@ -70,6 +70,16 @@
         "Calendar Membership Help": "Dynamic calendars resolve the current team members on every refresh. Static calendars capture the selected teams and users when you save. Later team changes do not change that list. Saving a static calendar again refreshes its captured list. Show inactive users and calendar permissions still apply.",
         "Static Calendar Member Limit": "A static calendar can include up to 500 users. Select fewer teams or users, or use dynamic membership.",
         "Could not capture calendar members": "Could not capture the calendar members. No calendar changes were saved. Please try again.",
-        "Invalid visible time range": "Enter a valid time range, such as 08:00 to 15:00. The end must be later than the start; use 24:00 for the end of the day."
+        "Invalid visible time range": "Enter a valid time range, such as 08:00 to 15:00. The end must be later than the start; use 24:00 for the end of the day.",
+        "Created event users not in calendar": "This event can be saved, but it will not appear in the current calendar because its assigned user or attendees are not included. Select a calendar that includes them to see the event.",
+        "Created event users hidden": "This event can be saved, but it will not appear here because its users are hidden. Show one of them in the calendar legend to see the event.",
+        "Created event attendees declined": "This event can be saved, but it will not appear in the current calendar because all of its included attendees have declined.",
+        "Created event type hidden": "This event can be saved, but its event type is hidden in the current calendar. Enable that event type to see it here.",
+        "Created event status hidden": "This event can be saved, but its status is hidden by the current calendar settings.",
+        "Created event users not in calendar after save": "The event was created, but it is not shown in this calendar because its assigned user or attendees are not included.",
+        "Created event users hidden after save": "The event was created, but its users are hidden in this calendar. Show one of them in the legend to see it.",
+        "Created event attendees declined after save": "The event was created, but it is not shown here because all of its included attendees have declined.",
+        "Created event type hidden after save": "The event was created, but its event type is hidden in this calendar. Enable that type to see it.",
+        "Created event status hidden after save": "The event was created, but its status is hidden by the current calendar settings."
     }
 }
