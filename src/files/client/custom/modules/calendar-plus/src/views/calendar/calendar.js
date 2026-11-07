@@ -4,7 +4,8 @@ define('calendar-plus:views/calendar/calendar', [
   'calendar-plus:calendar-colors',
   'calendar-plus:views/calendar/event-tooltip',
   'calendar-plus:calendar-definitions',
-], (Calendar, FullCalendar, Colors, EventTooltip, Definitions) => {
+  'calendar-plus:active-calendar',
+], (Calendar, FullCalendar, Colors, EventTooltip, Definitions, ActiveCalendar) => {
   // Share the standard calendar's editing callbacks; no scheduler plugin is required.
   const optionNames = [
     'slotMinTime',
@@ -123,10 +124,17 @@ define('calendar-plus:views/calendar/calendar', [
     }
 
     createView(name, view, options, callback) {
+      const isEventCreate = view === 'crm:views/calendar/modals/edit';
+      const viewName = isEventCreate
+        ? 'calendar-plus:views/calendar/modals/edit'
+        : name === 'modeButtons'
+          ? 'calendar-plus:views/calendar/mode-buttons'
+          : view;
+
       return super.createView(
         name,
-        name === 'modeButtons' ? 'calendar-plus:views/calendar/mode-buttons' : view,
-        options,
+        viewName,
+        isEventCreate ? { ...options, calendarView: this } : options,
         callback,
       );
     }
@@ -190,6 +198,7 @@ define('calendar-plus:views/calendar/calendar', [
 
       try {
         const result = super.afterRender();
+        ActiveCalendar.register(this);
         this.applyViewSettings();
 
         return result;

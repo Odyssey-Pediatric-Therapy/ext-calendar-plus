@@ -47,7 +47,14 @@ function fixture(minutes, mode, fail = false) {
     read('src/files/client/custom/modules/calendar-plus/src/views/calendar/calendar.js'),
     {
       define: (name, deps, factory) => {
-        render = factory(Base, fullCalendar, {}, class {}, { viewSettings: () => ({}) });
+        render = factory(
+          Base,
+          fullCalendar,
+          {},
+          class {},
+          { viewSettings: () => ({}) },
+          { register() {} },
+        );
       },
     },
   );

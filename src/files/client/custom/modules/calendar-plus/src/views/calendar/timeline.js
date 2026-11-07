@@ -3,7 +3,8 @@ define('calendar-plus:views/calendar/timeline', [
   'calendar-plus:calendar-definitions',
   'calendar-plus:views/calendar/event-tooltip',
   'moment',
-], (Timeline, Definitions, EventTooltip, moment) => {
+  'calendar-plus:active-calendar',
+], (Timeline, Definitions, EventTooltip, moment, ActiveCalendar) => {
   // vis requires concrete local dates to anchor a weekly hidden interval.
   // This Saturday-to-Monday reference repeats every week, in every year.
   const WEEKEND_START_REFERENCE = '2026-11-07 00:00:00';
@@ -19,6 +20,13 @@ define('calendar-plus:views/calendar/timeline', [
         this.actionSearchCalendar();
       },
     };
+
+    afterRender() {
+      const result = super.afterRender();
+      ActiveCalendar.register(this);
+
+      return result;
+    }
 
     setup() {
       this.eventAppearances = new Map();
@@ -151,10 +159,17 @@ define('calendar-plus:views/calendar/timeline', [
     }
 
     createView(name, view, options, callback) {
+      const isEventCreate = view === 'crm:views/calendar/modals/edit';
+      const viewName = isEventCreate
+        ? 'calendar-plus:views/calendar/modals/edit'
+        : name === 'modeButtons'
+          ? 'calendar-plus:views/calendar/mode-buttons'
+          : view;
+
       return super.createView(
         name,
-        name === 'modeButtons' ? 'calendar-plus:views/calendar/mode-buttons' : view,
-        options,
+        viewName,
+        isEventCreate ? { ...options, calendarView: this } : options,
         callback,
       );
     }

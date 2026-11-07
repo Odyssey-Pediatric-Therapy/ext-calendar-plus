@@ -30,6 +30,11 @@ function load(file, dependencies, espo = {}) {
   return exported;
 }
 
+const visibilityDefinitions = load('calendar-definitions.js', {});
+const visibility = load('calendar-visibility.js', {
+  'calendar-plus:calendar-definitions': visibilityDefinitions,
+});
+
 function fixture(getRequest = async () => ({ list: [], total: 0 })) {
   const fields = {
     name: { type: 'varchar' },
@@ -67,7 +72,11 @@ function fixture(getRequest = async () => ({ list: [], total: 0 })) {
     getAcl: () => ({ checkScope: (scope) => scope !== 'Hidden' }),
     getDateTime: () => ({ getTimeZone: () => 'America/Denver' }),
   };
-  const search = load('calendar-search.js', { moment }, { Ajax: { getRequest } });
+  const search = load(
+    'calendar-search.js',
+    { moment, 'calendar-plus:calendar-visibility': visibility },
+    { Ajax: { getRequest } },
+  );
   return { view, search, definitions };
 }
 
@@ -779,4 +788,50 @@ test('personal and Timeline availability use their loaded membership and require
     search.resultAvailability(view, { scope: 'Task', assignedUserId: 'timeline-user' }).reason,
     'Search result has no date',
   );
+});
+
+test('search shares loaded-user rules while using persisted attendees rather than create-time owner prediction', () => {
+  const { view, search } = fixture();
+  view.isSharedTimeGrid = () => true;
+  view.sharedUsers = [{ id: 'ann' }];
+  view.getConfig = () => ({ get: () => false });
+  const record = {
+    id: 'meeting',
+    scope: 'Meeting',
+    assignedUserId: 'ann',
+    usersIds: ['bob'],
+    usersNames: { ann: 'Stale name', bob: 'Bob' },
+    dateStart: '2026-11-05 09:00:00',
+  };
+  const before = JSON.stringify(record);
+  assert.equal(search.resultAvailability(view, record).canShow, false);
+  assert.equal(JSON.stringify(record), before);
+  record.usersIds = ['ann'];
+  assert.equal(search.resultAvailability(view, record).canShow, true);
+});
+
+test('shared search membership respects assignment field type and custom User relationship metadata', () => {
+  const { view, search, definitions } = fixture();
+  view.isSharedTimeGrid = () => true;
+  view.sharedUsers = [{ id: 'ann' }];
+  definitions.Task.fields.assignedUsers = { type: 'varchar' };
+  const task = { id: 'task', scope: 'Task', assignedUserId: 'ann', dateEndDate: '2026-11-05' };
+  assert.equal(search.resultAvailability(view, task).canShow, true);
+  definitions.Task.fields.assignedUsers = { type: 'linkMultiple' };
+  task.assignedUsersIds = ['bob'];
+  task.assignedUsersNames = { ann: 'Stale name', bob: 'Bob' };
+  assert.equal(search.resultAvailability(view, task).canShow, false);
+  definitions.Custom = {
+    fields: { users: { type: 'linkMultiple' } },
+    links: { users: { entity: 'Contact' } },
+  };
+  const custom = {
+    id: 'custom',
+    scope: 'Custom',
+    usersIds: ['ann'],
+    dateStart: '2026-11-05 09:00:00',
+  };
+  assert.equal(search.resultAvailability(view, custom).canShow, false);
+  definitions.Custom.links.users.entity = 'User';
+  assert.equal(search.resultAvailability(view, custom).canShow, true);
 });

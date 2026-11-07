@@ -1,4 +1,7 @@
-define('calendar-plus:calendar-search', ['moment'], (moment) => {
+define('calendar-plus:calendar-search', ['moment', 'calendar-plus:calendar-visibility'], (
+  moment,
+  Visibility,
+) => {
   const optionalColumns = ['when', 'assignedUser', 'attendees', 'status'];
 
   const getOptions = (view) => {
@@ -46,25 +49,7 @@ define('calendar-plus:calendar-search', ['moment'], (moment) => {
       return { canShow: false, reason: 'Search result has no date', userIds: [] };
     }
 
-    let loaded;
-    if (view.isSharedTimeGrid?.()) loaded = view.sharedUsers || [];
-    else if (Array.isArray(view.userList)) loaded = view.userList;
-    else loaded = [{ id: view.options?.userId || view.getUser?.()?.id }];
-    const loadedIds = new Set(loaded.map((user) => user.id).filter(Boolean));
-    const ids = (field) => [
-      ...(record[`${field}Ids`] || []),
-      ...Object.keys(record[`${field}Names`] || {}),
-    ];
-    const fields = view.getMetadata().get(['entityDefs', record.scope, 'fields']) || {};
-    let members;
-
-    if (['Meeting', 'Call'].includes(record.scope)) members = ids('users');
-    else {
-      members = fields.assignedUsers ? ids('assignedUsers') : [record.assignedUserId];
-      if (record.scope !== 'Task') members.push(...ids('users'));
-    }
-
-    const userIds = [...new Set(members.filter((id) => loadedIds.has(id)))];
+    const userIds = Visibility.includedUserIds(view, record.scope, record);
 
     return {
       canShow: !!userIds.length,
