@@ -1,0 +1,8 @@
+{
+    "viewSetupHandlers": {
+        "record/edit": [
+            "__APPEND__",
+            "calendar-plus:handlers/quick-create-warning"
+        ]
+    }
+}
