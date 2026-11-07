@@ -92,14 +92,31 @@ define('calendar-plus:views/calendar/calendar-page', [
 
       const calendar = this.getCalendarView();
 
-      if (calendar?.calendarType === 'shared') return calendar.actionShowSharedCalendarOptions();
+      if (
+        calendar?.calendarType === 'shared' &&
+        this.getAcl().getPermissionLevel('userCalendar') !== 'no'
+      )
+        return calendar.actionShowSharedCalendarOptions();
+
+      return this.openCalendarEditor({
+        source: 'personal',
+        mode: this.mode.startsWith('timeline')
+          ? 'timeline'
+          : Definitions.normalizeMode(calendar?.viewMode || calendar?.mode || this.mode),
+        routeMode: this.mode,
+      });
     }
 
     async openCalendarEditor(item = null) {
-      if (this.options.userId || this.getAcl().getPermissionLevel('userCalendar') === 'no') return;
+      if (
+        this.options.userId ||
+        (item?.source !== 'personal' && this.getAcl().getPermissionLevel('userCalendar') === 'no')
+      )
+        return;
 
       const view = new CalendarModal({
         calendar: item,
+        calendarView: this.getCalendarView(),
         onSave: (saved) => {
           this.mode = saved ? saved.routeMode : 'agendaWeek';
           this.getStorage().set('state', 'calendarMode', this.mode);

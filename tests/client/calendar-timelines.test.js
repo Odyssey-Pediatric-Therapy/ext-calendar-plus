@@ -249,7 +249,7 @@ function modalFixture() {
   modal.getPreferences = () => ({
     get: (key) => (key === 'calendarPlusList' ? state.list : []),
     set: (key, value) => {
-      state.list = value;
+      if (key === 'calendarPlusList') state.list = value;
     },
     save: async (data) => {
       state.list = data.calendarPlusList;
