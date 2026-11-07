@@ -25,13 +25,59 @@ define('calendar-plus:views/calendar/modals/settings', [
         visibleTimeEnd: (Definitions.timeRange(stored)?.end || '24:00:00').slice(0, 5),
         showGradient: stored.showGradient !== false,
         showTooltips: stored.showTooltips !== false,
+        eventTextSize: ['small', 'large'].includes(stored.eventTextSize)
+          ? stored.eventTextSize
+          : 'medium',
+        dayBoundary: ['strong', 'black'].includes(stored.dayBoundary)
+          ? stored.dayBoundary
+          : 'subtle',
+        timelineRowHeight: ['compact', 'spacious'].includes(stored.timelineRowHeight)
+          ? stored.timelineRowHeight
+          : 'comfortable',
+        showDeclinedEvents: stored.showDeclinedEvents !== false,
+        showCanceledEvents: stored.showCanceledEvents !== false,
+        rememberHiddenPeople: stored.rememberHiddenPeople !== false,
+        tooltipAttendees: stored.tooltipAttendees !== false,
+        tooltipAssignee: stored.tooltipAssignee !== false,
+        tooltipLocation: stored.tooltipLocation !== false,
+        tooltipStatus: stored.tooltipStatus !== false,
       });
       this.model.name = 'CalendarViewSettings';
-      const rows = [];
+
+      const sections = [
+        { name: 'display', label: 'Display', rows: [] },
+        { name: 'timeRange', label: 'Time Range', rows: [] },
+        { name: 'people', label: 'People and Events', rows: [] },
+        { name: 'tooltips', label: 'Tooltips', rows: [] },
+      ];
+
+      const sectionFields = {
+        timeRange: ['visibleTimeStart', 'visibleTimeEnd', 'slotDuration', 'scrollHour'],
+        people: [
+          'showInactiveUsers',
+          'showDeclinedEvents',
+          'showCanceledEvents',
+          'rememberHiddenPeople',
+        ],
+        tooltips: [
+          'showTooltips',
+          'tooltipAttendees',
+          'tooltipAssignee',
+          'tooltipLocation',
+          'tooltipStatus',
+        ],
+      };
+
       this.settingNames = [];
       const add = (name, label, Field = Bool, params = {}) => {
         this.settingNames.push(name);
-        rows.push([{view: new Field({name, labelText: this.translate(label, 'labels', 'Calendar'), params})}, false]);
+
+        const sectionName =
+          Object.keys(sectionFields).find((key) => sectionFields[key].includes(name)) || 'display';
+
+        const section = sections.find((item) => item.name === sectionName);
+
+        section.rows.push([{view: new Field({name, labelText: this.translate(label, 'labels', 'Calendar'), params})}, false]);
       };
       if (this.options.inactiveUsersAvailable) add('showInactiveUsers', 'Show inactive users');
       add('showWeekends', 'Show weekends');
@@ -50,8 +96,47 @@ define('calendar-plus:views/calendar/modals/settings', [
       if (['agendaWeek', 'month'].includes(mode) && this.getConfig().get('calendarPlusColorGradientEnabled') !== false) {
         add('showGradient', 'Show color gradient');
       }
-      if (this.getConfig().get('calendarPlusTooltipEnabled') !== false) add('showTooltips', 'Show tooltips');
-      this.recordView = new Record({model: this.model, detailLayout: [{rows}]});
+
+      const choice = (name, label, options) =>
+        add(name, label, Enum, {
+          required: true,
+          options,
+          translatedOptions: Object.fromEntries(
+            options.map((value) => [value, this.translate(value, 'labels', 'Calendar')]),
+          ),
+        });
+
+      choice('eventTextSize', 'Event text size', ['small', 'medium', 'large']);
+
+      add('showDeclinedEvents', 'Show declined events');
+
+      add('showCanceledEvents', 'Show canceled events');
+
+      if (this.options.inactiveUsersAvailable && mode !== 'timeline') add('rememberHiddenPeople', 'Remember hidden people');
+
+      if (mode === 'timeline') {
+        choice('dayBoundary', 'Day boundary contrast', ['subtle', 'strong', 'black']);
+        choice('timelineRowHeight', 'Timeline row spacing', ['compact', 'comfortable', 'spacious']);
+      }
+
+      if (this.getConfig().get('calendarPlusTooltipEnabled') !== false) {
+        add('showTooltips', 'Show tooltips');
+        add('tooltipAttendees', 'Tooltip attendees');
+        add('tooltipAssignee', 'Tooltip assignee');
+        add('tooltipLocation', 'Tooltip location');
+        add('tooltipStatus', 'Tooltip status');
+      }
+
+      const detailLayout = sections
+        .filter((section) => section.rows.length)
+        .map((section) => ({
+          name: section.name,
+          label: this.translate(section.label, 'labels', 'Calendar'),
+          rows: section.rows,
+        }));
+
+      this.recordView = new Record({ model: this.model, detailLayout });
+
       this.assignView('record', this.recordView);
     }
 
@@ -61,7 +146,9 @@ define('calendar-plus:views/calendar/modals/settings', [
       if (this.recordView.validate()) return;
       const values = Object.fromEntries(this.settingNames.map(name => [name,
         ['slotDuration', 'scrollHour'].includes(name) ? Number(data[name]) :
-          ['visibleTimeStart', 'visibleTimeEnd'].includes(name) ? data[name]?.trim() : data[name] === true]));
+          ['visibleTimeStart', 'visibleTimeEnd'].includes(name) ? data[name]?.trim() : ['eventTextSize', 'dayBoundary', 'timelineRowHeight'].includes(name)
+                ? data[name]
+                : data[name] === true]));
       if (values.slotDuration != null && ![5, 10, 15, 30].includes(values.slotDuration) ||
           values.scrollHour != null && (!Number.isInteger(values.scrollHour) || values.scrollHour < 0 || values.scrollHour > 23)) return;
       if (this.settingNames.includes('visibleTimeStart')) {
@@ -73,6 +160,15 @@ define('calendar-plus:views/calendar/modals/settings', [
         values.visibleTimeStart = range.start.slice(0, 5);
         values.visibleTimeEnd = range.end.slice(0, 5);
       }
+
+      for (const [name, options] of Object.entries({
+        eventTextSize: ['small', 'medium', 'large'],
+        dayBoundary: ['subtle', 'strong', 'black'],
+        timelineRowHeight: ['compact', 'comfortable', 'spacious'],
+      })) {
+        if (this.settingNames.includes(name) && !options.includes(values[name])) return;
+      }
+
       const preferences = this.getPreferences();
       const previous = preferences.get('calendarPlusViewSettings');
       const key = Definitions.viewSettingsKey(preferences, this.options.mode);

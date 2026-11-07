@@ -154,6 +154,10 @@ define('calendar-plus:views/calendar/event-tooltip', ['calendar-plus:calendar-de
       const available = Object.fromEntries(Object.entries(details || {}).filter(([, value]) => value !== undefined));
       const data = {...source, ...available};
       const scope = data.scope || event.extendedProps.scope;
+
+      const settings =
+        Definitions?.viewSettings(view.getPreferences?.(), view.mode || 'timeline') || {};
+
       const rows = [];
       const add = (label, value, extra = {}) => { if (value) rows.push({label, value, ...extra}); };
       const names = map => map && typeof map === 'object' ? Object.values(map).filter(value => typeof value === 'string') : [];
@@ -166,25 +170,50 @@ define('calendar-plus:views/calendar/event-tooltip', ['calendar-plus:calendar-de
         add(view.translate('Time Zone', 'labels', 'Calendar'), dateTime.getTimeZone?.());
       }
       const assigned = [...new Set([data.assignedUserName, ...names(data.assignedUsersNames)].filter(Boolean))];
-      add(view.translate('assignedUser', 'fields', scope), assigned.join(', '));
+
+      if (settings.tooltipAssignee !== false)
+        add(view.translate('assignedUser', 'fields', scope), assigned.join(', '));
+
       const attendeeFields = ['usersNames', 'contactsNames', 'leadsNames'];
-      if (scope === 'Task') {
-        const collaborators = names(data.collaboratorsNames);
-        add(view.translate('collaborators', 'fields', scope), collaborators.join(', '));
-      } else if (details && attendeeFields.some(name => details[name] !== undefined)) {
-        const participants = this.attendeesFor(scope, details);
-        const label = ['Meeting', 'Call'].includes(scope) ? view.translate('Attendees', 'labels', 'Calendar') :
-          view.translate('users', 'fields', scope);
-        const value = participants.map(person => [person.name, person.indicator].filter(Boolean).join(' ')).join(', ');
-        add(label, value || view.translate('None'), participants.some(person => person.indicator) ? {participants} : {});
-      } else {
-        const people = (source.calendarUserIds || []).map(id => (view.sharedUsers || view.userList || []).find(user => user.id === id)?.name).filter(Boolean);
-        add(view.translate('Calendar users', 'labels', 'Calendar'), people.join(', '));
+
+      if (settings.tooltipAttendees !== false) {
+        if (scope === 'Task') {
+          const collaborators = names(data.collaboratorsNames);
+          add(view.translate('collaborators', 'fields', scope), collaborators.join(', '));
+        } else if (details && attendeeFields.some((name) => details[name] !== undefined)) {
+          const participants = this.attendeesFor(scope, details);
+          const label = ['Meeting', 'Call'].includes(scope)
+            ? view.translate('Attendees', 'labels', 'Calendar')
+            : view.translate('users', 'fields', scope);
+          const value = participants
+            .map((person) => [person.name, person.indicator].filter(Boolean).join(' '))
+            .join(', ');
+          add(
+            label,
+            value || view.translate('None'),
+            participants.some((person) => person.indicator) ? { participants } : {},
+          );
+        } else {
+          const people = (source.calendarUserIds || [])
+            .map(
+              (id) =>
+                (view.sharedUsers || view.userList || []).find((user) => user.id === id)?.name,
+            )
+            .filter(Boolean);
+          add(view.translate('Calendar users', 'labels', 'Calendar'), people.join(', '));
+        }
       }
-      if (data.status) {
-        add(view.translate('status', 'fields', scope), view.getLanguage?.()?.translateOption(data.status, 'status', scope) || data.status, {kind: 'status'});
+      if (settings.tooltipStatus !== false && data.status) {
+        add(
+          view.translate('status', 'fields', scope),
+          view.getLanguage?.()?.translateOption(data.status, 'status', scope) || data.status,
+          { kind: 'status' },
+        );
       }
-      if (typeof data.location === 'string') add(view.translate('location', 'fields', scope), data.location);
+
+      if (settings.tooltipLocation !== false && typeof data.location === 'string')
+        add(view.translate('location', 'fields', scope), data.location);
+
       return {title: data.name || source.title || event.title, type: view.translate(scope, 'scopeNames'), rows};
     }
 

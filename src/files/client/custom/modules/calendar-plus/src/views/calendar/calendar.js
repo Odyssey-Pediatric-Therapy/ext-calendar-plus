@@ -31,7 +31,9 @@ define('calendar-plus:views/calendar/calendar', [
         this.allDayScopeList = this.allDayScopeList.filter(scope => scope !== 'Task');
       }
       this.extendedProps = [...this.extendedProps, 'calendarUserIds', 'visibleCalendarUserIds'];
-      const hidden = this.getStorage().get('calendarPlus', this.personFilterKey());
+      const hidden = Definitions.viewSettings(this.getPreferences(), this.mode).rememberHiddenPeople === false
+          ? []
+          : this.getStorage().get('calendarPlus', this.personFilterKey());
       this.hiddenUserIds = new Set(Array.isArray(hidden) ? hidden.filter(id => typeof id === 'string') : []);
       this.eventElements = new Map();
       this.eventAppearances = new Map();
@@ -67,6 +69,9 @@ define('calendar-plus:views/calendar/calendar', [
 
     applyViewSettings(scroll = false) {
       const settings = Definitions.viewSettings(this.getPreferences(), this.mode);
+
+      Definitions.applyAppearance(this);
+
       if (!this.calendar) return;
       const signature = JSON.stringify([this.mode, settings]);
       if (!scroll && this.viewSettingsCalendar === this.calendar && this.viewSettingsSignature === signature) return;
@@ -161,7 +166,8 @@ define('calendar-plus:views/calendar/calendar', [
     }
 
     statusColor(color, event) {
-      const ended = (this.getEventTypeCompletedStatusList?.(event.scope) || []).includes(event.status) ||
+      const ended = event.isDeclined ||
+        (this.getEventTypeCompletedStatusList?.(event.scope) || []).includes(event.status) ||
         (this.getEventTypeCanceledStatusList?.(event.scope) || []).includes(event.status);
       if (!color || !ended) return color;
       // Match Espo's status shading; generated person colors can also use HSL.
@@ -184,6 +190,13 @@ define('calendar-plus:views/calendar/calendar', [
       }
     }
 
+    styleDeclinedEvent(event) {
+      const ids = event.visibleCalendarUserIds || event.calendarUserIds;
+      event.color = ids?.length
+        ? this.colorForEvent(event, ids[0])
+        : this.statusColor(event.originalColor || Colors.entityColor(this, event.scope), event);
+    }
+
     assignUserColors(users) {
       this.userColors = Colors.assignUsers(this.getStorage(), users);
     }
@@ -195,7 +208,17 @@ define('calendar-plus:views/calendar/calendar', [
     async fetchEvents(from, to, callback) {
       this.eventTooltip.refresh();
       this.syncSharedLayout();
-      if (!this.isSharedTimeGrid()) return super.fetchEvents(from, to, callback);
+      if (!this.isSharedTimeGrid()) {
+        const revision = ++this.requestRevision;
+
+        return super.fetchEvents(from, to, async (events) => {
+          if (Definitions.shouldFilterEvents(this, events)) {
+            events = await Definitions.filterEvents(this, events);
+          }
+
+          if (!this.sharedRemoved && revision === this.requestRevision) callback(events);
+        });
+      }
       const revision = ++this.requestRevision;
       const current = () => !this.sharedRemoved && revision === this.requestRevision;
       Espo.Ui.notifyWait();
@@ -225,7 +248,12 @@ define('calendar-plus:views/calendar/calendar', [
           return {...event, calendarUserIds: ids, color: this.colorForEvent(event, ids[0]),
             textColor: '#fff'};
         }).filter(event => event.calendarUserIds.length || event.display === 'inverse-background');
-        callback(this.sharedEvents.map(event => this.filteredEvent(event)));
+        this.sharedEvents = await Definitions.filterEvents(this, this.sharedEvents);
+
+        if (!current()) return;
+
+        callback(this.sharedEvents.map((event) => this.filteredEvent(event)));
+
         this.syncSharedLayout();
         Espo.Ui.notify();
       } catch (error) {
@@ -330,7 +358,9 @@ define('calendar-plus:views/calendar/calendar', [
       // Toggling visibility should not leave the clicked button's focus/hover spotlight active.
       this.hoveredUserId = null;
       this.focusedUserId = null;
-      this.getStorage().set('calendarPlus', this.personFilterKey(), [...this.hiddenUserIds]);
+      this.getStorage().set('calendarPlus', this.personFilterKey(), Definitions.viewSettings(this.getPreferences(), this.mode).rememberHiddenPeople === false
+          ? []
+          : [...this.hiddenUserIds]);
       // Keep the original event source so Refresh and date navigation still fetch normally.
       this.calendar.batchRendering(() => {
         for (const event of this.calendar.getEvents()) {
@@ -729,7 +759,10 @@ define('calendar-plus:views/calendar/calendar', [
         }
         if (!this.sharedRemoved) {
           this.hiddenUserIds.delete(userId);
-          this.getStorage().set('calendarPlus', this.personFilterKey(), [...this.hiddenUserIds]);
+          this.getStorage().set('calendarPlus', this.personFilterKey(), Definitions.viewSettings(this.getPreferences(), this.mode).rememberHiddenPeople ===
+              false
+              ? []
+              : [...this.hiddenUserIds]);
           this.actionRefresh();
           Espo.Ui.notify();
         }

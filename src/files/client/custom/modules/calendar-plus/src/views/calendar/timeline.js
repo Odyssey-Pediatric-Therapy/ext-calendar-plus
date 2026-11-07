@@ -34,12 +34,31 @@ define('calendar-plus:views/calendar/timeline', [
     applyViewSettings() {
       const settings = Definitions.viewSettings(this.getPreferences(), this.mode || 'timeline');
       this.eventTooltip.refresh();
+
+      Definitions.applyAppearance(this);
+
+      const appearance = JSON.stringify([settings.eventTextSize, settings.timelineRowHeight]);
+
+      if (this.timeline && this.timelineAppearance !== appearance) {
+        this.timelineAppearance = appearance;
+        this.timeline.redraw?.();
+      }
+
       const showWeekends = settings.showWeekends !== false;
       const range = Definitions.timeRange(settings) || {start: '00:00:00', end: '24:00:00'};
       const signature = JSON.stringify([showWeekends, range]);
-      if (!this.timeline || this.settingsTimeline === this.timeline && this.timelineSettingsSignature === signature) return;
+
+      if (!this.timeline ||
+        (this.settingsTimeline === this.timeline && this.timelineSettingsSignature === signature)) return;
+
       const hiddenDates = [];
-      if (!showWeekends) hiddenDates.push({start: WEEKEND_START_REFERENCE, end: WEEKEND_END_REFERENCE, repeat: 'weekly'});
+
+      if (!showWeekends) hiddenDates.push({
+          start: WEEKEND_START_REFERENCE,
+          end: WEEKEND_END_REFERENCE,
+          repeat: 'weekly',
+        });
+
       if (range.start !== '00:00:00' || range.end !== '24:00:00') {
         // Anchor the overnight gap to a reference day; vis repeats it daily in local time.
         const start = new Date(WEEKEND_START_REFERENCE.replace(' ', 'T'));
@@ -47,13 +66,15 @@ define('calendar-plus:views/calendar/timeline', [
         const end = new Date(WEEKEND_START_REFERENCE.replace(' ', 'T'));
         end.setDate(end.getDate() + 1);
         end.setHours(Number(range.start.slice(0, 2)), Number(range.start.slice(3, 5)), 0, 0);
-        hiddenDates.push({start, end, repeat: 'daily'});
+        hiddenDates.push({ start, end, repeat: 'daily' });
       }
+
       const apply = hiddenDates.length || this.timelineHasHiddenDates;
       this.settingsTimeline = this.timeline;
       this.timelineSettingsSignature = signature;
       this.timelineHasHiddenDates = !!hiddenDates.length;
-      if (apply) this.timeline.setOptions({hiddenDates});
+
+      if (apply) this.timeline.setOptions({ hiddenDates });
     }
 
     createView(name, view, options, callback) {
@@ -132,15 +153,42 @@ define('calendar-plus:views/calendar/timeline', [
       return super.actionShowSharedCalendarOptions();
     }
 
+    styleDeclinedEvent(event) {
+      const color =
+        event.color || this.colors[event.scope] || this.getColorFromScopeName(event.scope);
+      const faded = this.shadeColor(color, 0.4);
+
+      event.style = `${event.style || ''}background-color:${faded};border-color:${faded};`;
+    }
+
     convertEvent(record) {
       const event = super.convertEvent(record);
       if (event) {
         // Use the same detailed tooltip as the grid calendars instead of vis's title popup.
+        if (record.scope === 'Task' &&
+          event.type === 'box' &&
+          record.dateStart &&
+          record.dateEnd &&
+          !record.dateStartDate && !record.dateEndDate) {
+          event.type = 'range';
+
+          event.start = this.getDateTime().toMoment(record.dateStart);
+
+          event.end = this.getDateTime().toMoment(record.dateEnd);
+        }
+
         delete event.title;
+
         if (record.scope && event.type !== 'background') {
-          this.tooltipEvents.set(event.id, {id: event.id, title: record.name, extendedProps: {
-            ...record, recordId: record.id, calendarUserIds: [event.group],
-          }});
+          this.tooltipEvents.set(event.id, {
+            id: event.id,
+            title: record.name,
+            extendedProps: {
+              ...record,
+              recordId: record.id,
+              calendarUserIds: [event.group],
+            },
+          });
         }
       }
       return event;
@@ -174,27 +222,46 @@ define('calendar-plus:views/calendar/timeline', [
       this.eventTooltip.refresh();
       this.tooltipEvents.clear();
       const revision = this.fetchRevision = (this.fetchRevision || 0) + 1;
-      const deliver = events => {
+      const deliver = async (events) => {
+        if (Definitions.shouldFilterEvents(this, events)) {
+          events = await Definitions.filterEvents(this, events);
+        }
+
         if (this.removed || revision !== this.fetchRevision) return;
+
         callback(events);
+
         if (this.timeline) {
           this.applyViewSettings();
           const isNew = this.tooltipTimeline !== this.timeline;
           const configuredGap = this.getConfig().get('calendarPlusTimelineEventGap');
-          const gap = Number.isFinite(configuredGap) ? Math.max(0, Math.min(100, Math.round(configuredGap))) : 0;
-          if (isNew || gap !== this.timelineEventGap) {
+          const spacing = Definitions.viewSettings(
+            this.getPreferences(),
+            this.mode || 'timeline',
+          ).timelineRowHeight;
+          const vertical = spacing === 'compact' ? 4 : spacing === 'spacious' ? 22 : 12;
+          const gap = Number.isFinite(configuredGap)
+            ? Math.max(0, Math.min(100, Math.round(configuredGap)))
+            : 0;
+
+          if (isNew || gap !== this.timelineEventGap || vertical !== this.timelineVerticalGap) {
             this.timelineEventGap = gap;
-            this.timeline.setOptions({margin: {item: {horizontal: gap, vertical: 12}, axis: 6}});
+            this.timelineVerticalGap = vertical;
+            this.timeline.setOptions({ margin: { item: { horizontal: gap, vertical }, axis: 6 } });
             // Margin changes alone do not invalidate vis's existing row assignments.
             this.timeline.setItems(events);
           }
+
           if (isNew) {
             this.tooltipTimeline = this.timeline;
             this.timeline.on('changed', () => this.syncTimelineTooltips());
           }
         }
+
         this.syncTimelineTooltips();
-        this.$el?.find('.calendar-type-button-group button[data-toggle="dropdown"]').prop('disabled', false);
+        this.$el
+          ?.find('.calendar-type-button-group button[data-toggle="dropdown"]')
+          .prop('disabled', false);
       };
       const item = this.getMembershipSelection();
       if (item) {

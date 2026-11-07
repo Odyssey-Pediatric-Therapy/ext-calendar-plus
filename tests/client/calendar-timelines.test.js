@@ -408,3 +408,105 @@ test('Timeline hides hours outside its daily time window, combines weekends, and
   assert.equal(options[2].hiddenDates[0].start.getHours(), 0);
   assert.equal(options[2].hiddenDates[0].end.getHours(), 8);
 });
+
+test('Timeline row spacing adjusts vertical margins while retaining configured overlap gap', async () => {
+  for (const [spacing, vertical] of [
+    ['compact', 4],
+    ['comfortable', 12],
+    ['spacious', 22],
+  ]) {
+    const { view, preferences, config } = fixture();
+    view.mode = 'timeline';
+    view.calendarType = 'single';
+    preferences.calendarPlusViewSettings = { timeline: { timelineRowHeight: spacing } };
+    config.calendarPlusTimelineEventGap = 7;
+    const options = [];
+    await view.fetchEvents(date, date, () => {
+      view.timeline = { setOptions: (value) => options.push(plain(value)), setItems() {}, on() {} };
+    });
+    assert.deepEqual(options.find((item) => item.margin).margin.item, { horizontal: 7, vertical });
+  }
+});
+
+test('actual Espo conversion renders timed Tasks as ranges rather than title-sized due-date boxes', () => {
+  const core = readFileSync(
+    new URL('../../site/client/modules/crm/src/views/calendar/timeline.js', import.meta.url),
+    'utf8',
+  );
+  const start = core.indexOf('    convertEvent(o) {');
+  const end = core.indexOf('    /**', start);
+
+  class Clock {
+    constructor(value) {
+      this.value = new Date(value).getTime();
+    }
+    clone() {
+      const copy = new Clock(0);
+      copy.value = this.value;
+      return copy;
+    }
+    add(value) {
+      this.value += value * 86400000;
+      return this;
+    }
+    valueOf() {
+      return this.value;
+    }
+  }
+
+  const Native = vm.runInNewContext(`(class extends BaseTimeline {${core.slice(start, end)}})`, {
+    BaseTimeline,
+    moment: { tz: (value) => new Clock(value) },
+  });
+  const View = load(
+    'timeline.js',
+    {
+      'crm:views/calendar/timeline': Native,
+      'calendar-plus:calendar-definitions': {},
+      'calendar-plus:views/calendar/event-tooltip': class {},
+    },
+    {},
+  );
+  const view = new View();
+  Object.assign(view, {
+    userList: [{ id: 'me' }],
+    allDayScopeList: ['Task'],
+    eventAttributes: [],
+    tooltipEvents: new Map(),
+    getHelper: () => ({ escapeString: (value) => value }),
+    getDateTime: () => ({ toMoment: (value) => new Clock(value), getTimeZone: () => 'UTC' }),
+    handleStatus() {},
+  });
+  const task = {
+    id: 'short',
+    scope: 'Task',
+    name: 'A long title that must fit in ten minutes',
+    dateStart: '2026-11-05T09:00:00Z',
+    dateEnd: '2026-11-05T09:10:00Z',
+  };
+  const original = Native.prototype.convertEvent.call(view, task);
+  assert.equal(original.type, 'box');
+  assert.equal(+original.start, +original.end);
+
+  const event = view.convertEvent(task);
+  assert.equal(event.type, 'range');
+  assert.equal(+event.start, +new Date(task.dateStart));
+  assert.equal(+event.end, +new Date(task.dateEnd));
+  assert.deepEqual(view.allDayScopeList, ['Task'], 'grid all-day settings remain intact');
+
+  const dateOnly = view.convertEvent({
+    id: 'all-day',
+    scope: 'Task',
+    name: 'All day',
+    dateStartDate: '2026-11-05',
+    dateEndDate: '2026-11-05',
+  });
+  assert.equal(dateOnly.type, 'box');
+  const dueOnly = view.convertEvent({
+    id: 'due',
+    scope: 'Task',
+    name: 'Due only',
+    dateEnd: task.dateEnd,
+  });
+  assert.equal(dueOnly.type, 'box');
+});

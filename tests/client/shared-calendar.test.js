@@ -1155,3 +1155,68 @@ test('visible time window applies to the grid and shared Day columns and clamps 
   assert.equal(options.slotMinTime, '00:00:00');
   assert.equal(options.slotMaxTime, '24:00:00');
 });
+
+test('tooltip detail options independently hide participants, assignee, location, and status while retaining times', () => {
+  const { view } = fixture();
+  const settings = {};
+  view.getPreferences = () => ({
+    get: (key) =>
+      key === 'calendarPlusViewSettings'
+        ? { 'view:saved': settings }
+        : key === 'calendarViewDataList'
+          ? [{ id: 'saved', name: 'Saved' }]
+          : undefined,
+  });
+  const event = tooltipEvent('Meeting');
+  const details = {
+    dateStart: '2026-11-05 09:00:00',
+    assignedUserName: 'Ann',
+    usersNames: { bob: 'Bob' },
+    usersColumns: { bob: { status: 'Accepted' } },
+    status: 'Planned',
+    location: 'Office',
+  };
+
+  const labels = () => view.eventTooltip.detailsFor(event, details).rows.map((row) => row.label);
+
+  assert.ok(labels().includes('Attendees'));
+  for (const [option, label] of [
+    ['tooltipAttendees', 'Attendees'],
+    ['tooltipAssignee', 'assignedUser'],
+    ['tooltipLocation', 'location'],
+    ['tooltipStatus', 'status'],
+  ]) {
+    settings[option] = false;
+    assert.equal(labels().includes(label), false);
+    delete settings[option];
+    assert.equal(labels().includes(label), true);
+  }
+  assert.ok(labels().includes('dateStart'));
+});
+
+test('disabling remembered people keeps filters temporary and starts a reopened calendar with everyone visible', () => {
+  const { view } = fixture();
+  const state = {
+    calendarViewDataList: [{ id: 'saved', name: 'Saved' }],
+    calendarPlusViewSettings: { 'view:saved': { rememberHiddenPeople: false } },
+  };
+  const stored = { 'hiddenCalendarUsers:saved': ['ann'] };
+  view.getPreferences = () => ({ get: (key) => state[key] });
+  view.getStorage = () => ({
+    get: (category, key) => stored[key],
+    set: (category, key, value) => {
+      stored[key] = value;
+    },
+  });
+  view.setup();
+  assert.equal(view.hiddenUserIds.size, 0);
+  view.hiddenUserIds.add('ann');
+  view.calendar = { batchRendering: (fn) => fn(), getEvents: () => [] };
+  view.renderDayColumns = () => {};
+  view.renderLegend = () => {};
+  view.applyPersonFilters();
+  assert.equal(view.hiddenUserIds.has('ann'), true);
+  assert.deepEqual(Array.from(stored['hiddenCalendarUsers:saved']), []);
+  view.setup();
+  assert.equal(view.hiddenUserIds.size, 0);
+});

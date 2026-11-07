@@ -504,14 +504,14 @@ function settingsFixture({mode = 'agendaWeek', inactive = true, config = {}, sto
 
 test('view Settings exposes relevant controls and honors admin feature gates', () => {
   const week = settingsFixture();
-  assert.deepEqual(Array.from(week.view.settingNames), ['showInactiveUsers', 'showWeekends', 'visibleTimeStart', 'visibleTimeEnd', 'slotDuration', 'scrollHour', 'showGradient', 'showTooltips']);
+  assert.deepEqual(Array.from(week.view.settingNames), ['showInactiveUsers', 'showWeekends', 'visibleTimeStart', 'visibleTimeEnd', 'slotDuration', 'scrollHour', 'showGradient', 'eventTextSize', 'showDeclinedEvents', 'showCanceledEvents', 'rememberHiddenPeople', 'showTooltips', 'tooltipAttendees', 'tooltipAssignee', 'tooltipLocation', 'tooltipStatus']);
   assert.equal(week.view.model.attributes.scrollHour, '0');
   assert.equal(week.view.model.attributes.slotDuration, '10');
   const gated = settingsFixture({mode: 'month', inactive: false,
     config: {calendarPlusColorGradientEnabled: false, calendarPlusTooltipEnabled: false}});
-  assert.deepEqual(Array.from(gated.view.settingNames), ['showWeekends']);
+  assert.deepEqual(Array.from(gated.view.settingNames), ['showWeekends', 'eventTextSize', 'showDeclinedEvents', 'showCanceledEvents']);
   const timeline = settingsFixture({mode: 'timeline'});
-  assert.deepEqual(Array.from(timeline.view.settingNames), ['showInactiveUsers', 'showWeekends', 'visibleTimeStart', 'visibleTimeEnd', 'showTooltips']);
+  assert.deepEqual(Array.from(timeline.view.settingNames), ['showInactiveUsers', 'showWeekends', 'visibleTimeStart', 'visibleTimeEnd', 'eventTextSize', 'showDeclinedEvents', 'showCanceledEvents', 'dayBoundary', 'timelineRowHeight', 'showTooltips', 'tooltipAttendees', 'tooltipAssignee', 'tooltipLocation', 'tooltipStatus']);
 });
 
 test('view Settings saves one view atomically, preserves hidden values, and applies immediately', async () => {
@@ -521,6 +521,14 @@ test('view Settings saves one view atomically, preserves hidden values, and appl
   await view.actionSave();
   assert.deepEqual(JSON.parse(JSON.stringify(state.calendarPlusViewSettings['view:grid'])), {
     showTooltips: false, futureOption: 17, showWeekends: false, showInactiveUsers: true,
+    eventTextSize: 'medium',
+    showDeclinedEvents: true,
+    showCanceledEvents: true,
+    rememberHiddenPeople: true,
+    tooltipAttendees: true,
+    tooltipAssignee: true,
+    tooltipLocation: true,
+    tooltipStatus: true,
     slotDuration: 5, scrollHour: 0, showGradient: false, visibleTimeStart: '00:00', visibleTimeEnd: '24:00',
   });
   assert.equal(state.calendarPlusViewSettings.other.showWeekends, false);
@@ -560,4 +568,175 @@ test('visible time range accepts clock or compact input, persists per view, and 
     assert.equal(errors.length, 1);
     assert.equal(view.closed, undefined);
   }
+});
+
+test('all additional view options save without overwriting other view settings', async () => {
+  const { view, state } = settingsFixture({ mode: 'timeline' });
+  Object.assign(view.model.attributes, {
+    eventTextSize: 'large',
+    showDeclinedEvents: false,
+    dayBoundary: 'black',
+    timelineRowHeight: 'compact',
+    tooltipAttendees: false,
+    tooltipAssignee: false,
+    tooltipLocation: false,
+    tooltipStatus: false,
+  });
+  await view.actionSave();
+  const saved = state.calendarPlusViewSettings['view:grid'];
+  assert.equal(saved.eventTextSize, 'large');
+  assert.equal(saved.showDeclinedEvents, false);
+  assert.equal(saved.dayBoundary, 'black');
+  assert.equal(saved.timelineRowHeight, 'compact');
+  assert.equal(saved.tooltipAttendees, false);
+  assert.equal(saved.tooltipAssignee, false);
+  assert.equal(saved.tooltipLocation, false);
+  assert.equal(saved.tooltipStatus, false);
+  assert.equal(state.calendarPlusViewSettings.other.showWeekends, false);
+});
+
+test('declined-event filter uses the current attendee response, preserves canceled and unreadable events, and bounds requests', async () => {
+  const settings = { showDeclinedEvents: false };
+  let active = 0,
+    peak = 0,
+    requests = 0;
+  const view = {
+    mode: 'month',
+    getPreferences: () => ({ get: () => ({ month: settings }) }),
+    getUser: () => ({ id: 'me' }),
+    eventTooltip: {
+      loadDetails: async (event) => {
+        requests++;
+        active++;
+        peak = Math.max(peak, active);
+        await Promise.resolve();
+        active--;
+
+        if (event.extendedProps.recordId === 'denied') return null;
+
+        return {
+          usersColumns: {
+            me: { status: event.extendedProps.recordId === 'declined' ? 'Declined' : 'Accepted' },
+            other: { status: 'Declined' },
+          },
+        };
+      },
+    },
+  };
+  const events = ['declined', 'canceled', 'denied', 'accepted', 'more1', 'more2'].map(
+    (recordId) => ({
+      scope: 'Meeting',
+      recordId,
+      status: recordId === 'canceled' ? 'Not Held' : 'Planned',
+    }),
+  );
+  events.push({ scope: 'Task', recordId: 'task' }, { type: 'background' });
+  const filtered = await definitions.filterEvents(view, events);
+  assert.deepEqual(
+    Array.from(filtered, (event) => event.recordId),
+    ['canceled', 'denied', 'accepted', 'more1', 'more2', 'task', undefined],
+  );
+  assert.equal(requests, 6);
+  assert.ok(peak <= 4);
+  settings.showDeclinedEvents = true;
+  assert.equal(await definitions.filterEvents(view, events), events);
+  assert.equal(requests, 12);
+});
+
+test('view Settings groups related controls into labeled panels and omits unavailable panels', () => {
+  const { view } = settingsFixture();
+  const panels = view.recordView.options.detailLayout;
+  assert.deepEqual(
+    Array.from(panels, (panel) => panel.label),
+    ['Display', 'Time Range', 'People and Events', 'Tooltips'],
+  );
+
+  const fieldNames = (panel) => Array.from(panel.rows, (row) => row[0].view.options.name);
+  assert.deepEqual(fieldNames(panels.find((panel) => panel.name === 'tooltips')), [
+    'showTooltips',
+    'tooltipAttendees',
+    'tooltipAssignee',
+    'tooltipLocation',
+    'tooltipStatus',
+  ]);
+  assert.deepEqual(fieldNames(panels.find((panel) => panel.name === 'timeRange')), [
+    'visibleTimeStart',
+    'visibleTimeEnd',
+    'slotDuration',
+    'scrollHour',
+  ]);
+  assert.deepEqual(fieldNames(panels.find((panel) => panel.name === 'people')), [
+    'showInactiveUsers',
+    'showDeclinedEvents',
+    'showCanceledEvents',
+    'rememberHiddenPeople',
+  ]);
+
+  const restricted = settingsFixture({
+    mode: 'month',
+    inactive: false,
+    config: { calendarPlusTooltipEnabled: false },
+  });
+  assert.deepEqual(
+    Array.from(restricted.view.recordView.options.detailLayout, (panel) => panel.name),
+    ['display', 'people'],
+  );
+});
+
+test('canceled-event visibility uses entity cancellation metadata independently from attendee responses', async () => {
+  const settings = { showCanceledEvents: false };
+  const view = {
+    mode: 'timeline',
+    getPreferences: () => ({ get: () => ({ timeline: settings }) }),
+    getEventTypeCanceledStatusList: (scope) => (scope === 'Meeting' ? ['Not Held'] : ['Canceled']),
+  };
+  const events = [
+    { scope: 'Meeting', status: 'Not Held', recordId: 'canceled-meeting' },
+    { scope: 'Meeting', status: 'Held', recordId: 'completed-meeting' },
+    { extendedProps: { scope: 'Task', status: 'Canceled', recordId: 'canceled-task' } },
+    { scope: 'Task', status: 'Completed', recordId: 'completed-task' },
+    { type: 'background', scope: 'Task', status: 'Canceled' },
+  ];
+  assert.equal(definitions.shouldFilterEvents(view), true);
+  assert.deepEqual(Array.from(await definitions.filterEvents(view, events)), [
+    events[1],
+    events[3],
+    events[4],
+  ]);
+  settings.showCanceledEvents = true;
+  assert.equal(definitions.shouldFilterEvents(view), false);
+  assert.equal(await definitions.filterEvents(view, events), events);
+  const modal = settingsFixture({ stored: { showCanceledEvents: false } });
+  assert.equal(modal.view.model.attributes.showCanceledEvents, false);
+  await modal.view.actionSave();
+  assert.equal(modal.state.calendarPlusViewSettings['view:grid'].showCanceledEvents, false);
+});
+
+test('visible declined invitations get their own class and faded style without marking other attendees responses', async () => {
+  const styles = [];
+  const view = {
+    mode: 'month',
+    getPreferences: () => ({ get: () => ({}) }),
+    getUser: () => ({ id: 'me' }),
+    eventTooltip: {
+      loadDetails: async ({ extendedProps }) => ({
+        usersColumns: {
+          me: { status: extendedProps.recordId === 'declined' ? 'Declined' : 'Accepted' },
+          other: { status: 'Declined' },
+        },
+      }),
+    },
+    styleDeclinedEvent: (event) => styles.push(event.recordId),
+  };
+  const events = [
+    { scope: 'Meeting', recordId: 'declined', className: ['existing'] },
+    { scope: 'Call', recordId: 'accepted', className: 'existing' },
+  ];
+  assert.equal(definitions.shouldFilterEvents(view, events), true);
+  const result = await definitions.filterEvents(view, events);
+  assert.equal(result.length, 2);
+  assert.equal(events[0].isDeclined, true);
+  assert.deepEqual(Array.from(events[0].className), ['existing', 'cp-event-declined']);
+  assert.equal(events[1].isDeclined, undefined);
+  assert.deepEqual(styles, ['declined']);
 });
