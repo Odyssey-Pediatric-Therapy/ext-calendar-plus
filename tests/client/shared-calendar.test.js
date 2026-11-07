@@ -1965,3 +1965,62 @@ test('a late Week response cannot replace events already loaded into shared Day 
   const ann = view.dayCalendars.find((item) => item.userId === 'ann');
   assert.equal(ann.calendar.sources[0][0].id, 'new');
 });
+
+test('touch event taps and focus restored after closing details never schedule tooltips', async () => {
+  let Tooltip;
+  let hover = false;
+  let focusVisible = false;
+  let nextId = 0;
+  const timers = new Map();
+  vm.runInNewContext(
+    readFileSync(
+      new URL(
+        '../../src/files/client/custom/modules/calendar-plus/src/views/calendar/event-tooltip.js',
+        import.meta.url,
+      ),
+      'utf8',
+    ),
+    {
+      define: (name, deps, factory) => {
+        Tooltip = factory();
+      },
+      window: { matchMedia: () => ({ matches: hover }) },
+      setTimeout: (callback) => {
+        timers.set(++nextId, callback);
+        return nextId;
+      },
+      clearTimeout: (id) => timers.delete(id),
+    },
+  );
+  const tooltip = new Tooltip({ eventAppearances: new Map(), getConfig: () => ({ get() {} }) });
+  const anchor = new Element();
+  anchor.matches = () => focusVisible;
+  tooltip.attach(anchor);
+
+  anchor.listeners.pointerdown({ pointerType: 'touch' });
+  anchor.listeners.mouseenter({ sourceCapabilities: { firesTouchEvents: true } });
+  anchor.listeners.click();
+  focusVisible = true;
+  anchor.listeners.focus(); // Modal restores focus to the event after closing.
+  assert.equal(timers.size, 0);
+  assert.equal(tooltip.enabled(), false);
+  await tooltip.show(anchor); // A previously queued show must also stay closed.
+  assert.equal(tooltip.active, undefined);
+
+  hover = true;
+  focusVisible = false;
+  anchor.listeners.focus();
+  assert.equal(timers.size, 0, 'pointer focus does not show a tooltip');
+  anchor.listeners.mouseenter({ sourceCapabilities: { firesTouchEvents: true } });
+  assert.equal(timers.size, 0, 'synthetic touch mouse events remain ignored');
+  anchor.listeners.mouseenter({});
+  assert.equal(timers.size, 1, 'real desktop hover still schedules a tooltip');
+  anchor.listeners.pointerdown({ pointerType: 'mouse' });
+  assert.equal(timers.size, 0, 'opening details cancels the pending hover');
+  focusVisible = true;
+  anchor.listeners.focus();
+  assert.equal(timers.size, 1, 'keyboard focus still schedules a tooltip on desktop');
+  tooltip.detach(anchor);
+  assert.equal(timers.size, 0);
+  assert.equal(Object.keys(anchor.listeners).length, 0);
+});

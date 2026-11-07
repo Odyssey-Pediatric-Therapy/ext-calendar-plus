@@ -14,10 +14,15 @@ define('calendar-plus:views/calendar/event-tooltip', ['calendar-plus:calendar-de
       if (this.bindings.has(element)) return;
 
       const handlers = {
-        mouseenter: () => this.scheduleShow(element),
+        mouseenter: (event) => {
+          if (!event?.sourceCapabilities?.firesTouchEvents) this.scheduleShow(element);
+        },
         mouseleave: () => this.scheduleHide(element),
-        focus: () => this.scheduleShow(element),
+        focus: () => {
+          if (element.matches?.(':focus-visible')) this.scheduleShow(element);
+        },
         blur: () => this.scheduleHide(element),
+        pointerdown: () => this.hide(),
         click: () => this.hide(),
         keydown: (event) => {
           if (event.key === 'Escape') this.hide();
@@ -52,6 +57,10 @@ define('calendar-plus:views/calendar/event-tooltip', ['calendar-plus:calendar-de
 
     enabled() {
       return (
+        // Touch browsers synthesize hover/focus when a tapped event regains focus.
+        (typeof window === 'undefined' ||
+          !window.matchMedia ||
+          window.matchMedia('(hover: hover) and (pointer: fine)').matches) &&
         this.view.getConfig().get('calendarPlusTooltipEnabled') !== false &&
         (!Definitions ||
           Definitions.viewSettings(this.view.getPreferences?.(), this.view.mode || 'timeline')
