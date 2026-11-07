@@ -310,6 +310,12 @@
   padding-bottom: 9px;
 }
 
+/* Rounded ends distinguish touching events without changing their scheduled width. */
+.cp-calendar-view .timeline .vis-item.vis-range,
+.cp-calendar-view .timeline .vis-item.vis-box {
+  border-radius: 8px !important;
+}
+
 /* Keep timed ranges bounded by their dates, including long labels and larger text. */
 .cp-calendar-view .timeline .vis-item.vis-range {
   min-width: 0 !important;
