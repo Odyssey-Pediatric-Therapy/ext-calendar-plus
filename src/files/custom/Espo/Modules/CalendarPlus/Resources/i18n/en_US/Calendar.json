@@ -1,5 +1,6 @@
 {
     "labels": {
+        "Print calendar": "Print calendar",
         "Create Timeline": "Create Timeline",
         "Edit Timeline": "Edit Timeline",
         "Calendar users": "Calendar users",
@@ -92,6 +93,8 @@
         "Event type": "Event Type"
     },
     "messages": {
+        "Preparing calendar PDF": "Preparing calendar PDF…",
+        "Could not print calendar": "Could not create the calendar PDF. Please try again.",
         "Select Timeline Members": "Enter a name and select at least one team or user.",
         "Timeline Members Help": "Include everyone in selected teams, specific people, or both. Team membership updates when the timeline refreshes.",
         "Could not load shared calendar": "Could not load the shared calendar. Try refreshing.",

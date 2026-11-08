@@ -8,7 +8,7 @@
     "integration-tests": "node build --copy && node build --composer-install && cd site && php vendor/bin/phpunit tests/integration/Espo/Modules/CalendarPlus",
     "copy": "node build --copy",
     "composer-install": "node build --composer-install",
-    "sync": "node build --copy && node build --composer-install",
+    "sync": "node build --copy && node build --composer-install && npm run clear-cache",
     "extension": "node build --extension",
     "clear-cache": "php site/clear_cache.php",
     "rebuild": "node build --rebuild",
@@ -21,7 +21,9 @@
   "author": "Anthony Andriano",
   "dependencies": {
     "espo-extension-tools": "github:espocrm/extension-tools#0.4.5",
-    "fs-extra": "^9.0.0"
+    "fs-extra": "^9.0.0",
+    "html2canvas": "1.4.1",
+    "pdf-lib": "1.17.1"
   },
   "engines": {
     "npm": ">=8",
