@@ -9,3 +9,7 @@
 /vendor
 /.phpunit.result.cache
 /composer.phar
+
+# Generated from npm dependencies by install and build.
+/src/files/client/custom/modules/calendar-plus/lib/*.min.js
+/src/files/client/custom/modules/calendar-plus/lib/*.LICENSE

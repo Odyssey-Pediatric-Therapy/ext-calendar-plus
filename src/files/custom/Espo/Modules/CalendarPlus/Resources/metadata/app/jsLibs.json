@@ -1,0 +1,12 @@
+{
+    "calendar-plus-pdf-lib": {
+        "path": "client/custom/modules/calendar-plus/lib/pdf-lib.min.js",
+        "exportsTo": "window",
+        "exportsAs": "PDFLib"
+    },
+    "calendar-plus-html2canvas": {
+        "path": "client/custom/modules/calendar-plus/lib/html2canvas.min.js",
+        "exportsTo": "window",
+        "exportsAs": "html2canvas"
+    }
+}

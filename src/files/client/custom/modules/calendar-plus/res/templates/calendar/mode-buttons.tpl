@@ -28,6 +28,8 @@
                 </a>
             </li>
         {{/each}}
+        <li class="divider" role="separator"></li>
+        <li><a role="button" tabindex="0" data-action="printCalendar">{{translate 'Print calendar' scope='Calendar'}}</a></li>
         {{#if hasMoreItems}}
             <li class="divider"></li>
         {{/if}}

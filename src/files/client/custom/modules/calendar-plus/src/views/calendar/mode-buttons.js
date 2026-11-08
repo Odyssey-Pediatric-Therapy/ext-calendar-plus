@@ -1,9 +1,32 @@
 define('calendar-plus:views/calendar/mode-buttons', [
   'crm:views/calendar/mode-buttons',
   'calendar-plus:calendar-definitions',
-], (ModeButtons, Definitions) => {
+  'calendar-plus:calendar-print',
+], (ModeButtons, Definitions, CalendarPrint) => {
   return class extends ModeButtons {
     template = 'calendar-plus:calendar/mode-buttons';
+
+    events = {
+      ...this.events,
+      'click [data-action="printCalendar"]': function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        void this.actionPrintCalendar();
+      },
+      'keydown [data-action="printCalendar"]': function (event) {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        event.stopPropagation();
+        void this.actionPrintCalendar();
+      },
+    };
+
+    actionPrintCalendar() {
+      const name = this.data().selectedModeLabel;
+      this.calendarPrinter ||= new CalendarPrint(this.getCalendarParentView(), name);
+      this.calendarPrinter.name = name;
+      return this.calendarPrinter.run();
+    }
 
     getModeDataList(originalOrder) {
       const primaryModes = ['month', 'agendaWeek', 'agendaDay', 'timeline'];
