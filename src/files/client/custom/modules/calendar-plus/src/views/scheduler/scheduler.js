@@ -1,10 +1,7 @@
-define('calendar-plus:views/scheduler/scheduler', [
-  'crm:views/scheduler/scheduler',
-  'calendar-plus:calendar-availability',
-  'moment',
-], (Scheduler, Availability, moment) => {
-  const SEARCH_BUDGET_MS = 3000;
-
+define('calendar-plus:views/scheduler/scheduler', ['crm:views/scheduler/scheduler', 'moment'], (
+  Scheduler,
+  moment,
+) => {
   return class extends Scheduler {
     events = {
       ...this.events,
@@ -150,117 +147,94 @@ define('calendar-plus:views/scheduler/scheduler', [
       this.updateSearchButton();
 
       const zone = this.getDateTime().getTimeZone();
+      const format = this.getDateTime().internalDateTimeFormat;
       const signature = JSON.stringify([state.start.valueOf(), state.duration, state.users, zone]);
-      const search =
-        this.pendingSearch?.signature === signature
-          ? this.pendingSearch
-          : {
-              signature,
-              earliest: Availability.roundUp(state.start.valueOf() + 1),
-              availability: Object.fromEntries(state.users.map((id) => [id, []])),
-            };
-      search.day ||= moment.utc(search.earliest).tz(zone).startOf('day');
-      const started = Date.now();
+      const cursor = this.pendingSearch?.signature === signature ? this.pendingSearch.cursor : null;
       this.pendingSearch = null;
 
       try {
-        while (search.day.isValid()) {
-          const day = search.day;
-          const nextDay = day.clone().add(1, 'day');
-          const format = this.getDateTime().internalDateTimeFormat;
+        const query = {
+          dateStart: state.start.clone().utc().format('YYYY-MM-DD HH:mm:ss'),
+          duration: state.duration / 1000,
+          userIdList: state.users,
+          timeZone: zone,
+          entityType: this.model.entityType,
+        };
 
-          if (!nextDay.isValid() || !nextDay.isAfter(day)) break;
+        if (this.model.id) query.entityId = this.model.id;
+        if (cursor) query.cursor = cursor;
 
-          const query = {
-            from: day.clone().utc().format(format),
-            to: nextDay.clone().utc().format(format),
-            userIdList: state.users.join(','),
-            entityType: this.model.entityType,
-          };
+        const result = await Espo.Ajax.postRequest('CalendarPlus/NextAvailable', query);
 
-          if (this.model.id) query.entityId = this.model.id;
+        if (this.isRemoved() || revision !== this.searchRevision) return;
 
-          const data = await Espo.Ajax.getRequest('Timeline/busyRanges', query);
+        if (result.status === 'found') {
+          const start = moment.utc(result.dateStart);
+          const end = moment.utc(result.dateEnd);
 
-          if (this.isRemoved() || revision !== this.searchRevision) return;
-
-          for (const userId of state.users) {
-            if (!data || !Object.hasOwn(data, userId) || !Array.isArray(data[userId])) {
-              throw new Availability.UnavailableError(
-                'Availability is missing for a selected user.',
-              );
-            }
-
-            search.availability[userId].push(...data[userId]);
+          if (
+            !result.dateStart ||
+            !result.dateEnd ||
+            !start.isValid() ||
+            !end.isValid() ||
+            !start.isAfter(state.start) ||
+            end.diff(start) !== state.duration
+          ) {
+            throw new Error('Invalid availability result.');
           }
 
-          const slot = Availability.findSlot(
-            search.availability,
-            state.users,
-            search.earliest,
-            nextDay.valueOf(),
-            state.duration,
-          );
+          this.model.set({
+            [this.startField]: start.format(format),
+            [this.endField]: end.format(format),
+          });
 
-          if (slot !== null) {
-            this.model.set({
-              [this.startField]: moment.utc(slot).format(format),
-              [this.endField]: moment.utc(slot + state.duration).format(format),
-            });
-
-            return;
-          }
-
-          // Earlier starts have been ruled out; retain enough history for a slot
-          // crossing this boundary without accumulating every previously checked day.
-          const nextPossible = Availability.findSlot(
-            search.availability,
-            state.users,
-            search.earliest,
-            Number.MAX_SAFE_INTEGER,
-            state.duration,
-          );
-          search.earliest = Math.max(
-            search.earliest,
-            nextPossible ?? search.earliest,
-            Availability.roundUp(nextDay.valueOf() - state.duration + 1),
-          );
-          search.day = moment
-            .utc(Math.max(nextDay.valueOf(), search.earliest))
-            .tz(zone)
-            .startOf('day');
-
-          for (const userId of state.users) {
-            search.availability[userId] = search.availability[userId].filter(
-              (range) => moment.utc(range.dateEnd).valueOf() > search.earliest,
-            );
-          }
-
-          // Pause by request cost, not by an arbitrary final date. The next click
-          // continues from this cursor rather than querying the same days again.
-          if (Date.now() - started >= SEARCH_BUDGET_MS) {
-            this.pendingSearch = search;
-            this.setSearchStatus(
-              this.translate('Continue scheduler search', 'messages', 'Calendar').replace(
-                '{date}',
-                search.day
-                  .clone()
-                  .subtract(1, 'day')
-                  .format(this.getDateTime().getReadableDateFormat()),
-              ),
-            );
-
-            return;
-          }
+          return;
         }
 
-        this.setSearchStatus(this.translate('No further scheduler dates', 'messages', 'Calendar'));
+        if (result.status === 'continue') {
+          const through = moment.utc(result.searchedThrough);
+
+          if (
+            !result.searchedThrough ||
+            !through.isValid() ||
+            typeof result.cursor !== 'string' ||
+            !result.cursor
+          ) {
+            throw new Error('Invalid availability continuation.');
+          }
+
+          this.pendingSearch = { signature, cursor: result.cursor };
+          this.setSearchStatus(
+            this.translate('Continue scheduler search', 'messages', 'Calendar').replace(
+              '{date}',
+              through.tz(zone).format(this.getDateTime().getReadableDateFormat()),
+            ),
+          );
+
+          return;
+        }
+
+        if (result.status === 'unavailable' || result.status === 'exhausted') {
+          this.setSearchStatus(
+            this.translate(
+              result.status === 'unavailable'
+                ? 'Scheduler availability unavailable'
+                : 'No further scheduler dates',
+              'messages',
+              'Calendar',
+            ),
+          );
+
+          return;
+        }
+
+        throw new Error('Invalid availability response.');
       } catch (error) {
         if (this.isRemoved() || revision !== this.searchRevision) return;
 
         this.setSearchStatus(
           this.translate(
-            error instanceof Availability.UnavailableError
+            error.status === 403
               ? 'Scheduler availability unavailable'
               : 'Could not find scheduler time',
             'messages',
