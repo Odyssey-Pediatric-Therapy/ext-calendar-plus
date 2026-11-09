@@ -179,6 +179,31 @@
   overflow-wrap: anywhere;
 }
 
+.calendar-plus-header .cp-calendar-picker [data-action="mode"] {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding-left: 8px;
+}
+
+.calendar-plus-header .cp-calendar-option-name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.calendar-plus-header .cp-calendar-type-badge {
+  flex: 0 0 16px;
+  padding: 0;
+  text-align: center;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.4;
+  white-space: nowrap;
+  opacity: 0.65;
+}
+
 @media (max-width: 480px) {
   .calendar-plus-header .mode-buttons > .cp-calendar-picker {
     max-width: 120px;
