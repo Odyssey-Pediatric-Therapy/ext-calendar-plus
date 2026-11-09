@@ -6,7 +6,9 @@
         {{#each allModeDataList}}
         {{#if separatorBefore}}<li class="divider" role="separator"></li>{{/if}}
         <li><a role="button" tabindex="0" class="{{#ifEqual mode ../mode}}active{{/ifEqual}}" data-action="mode" data-mode="{{mode}}"{{#ifEqual mode ../mode}} aria-current="page"{{/ifEqual}}>
-            {{#ifEqual mode ../mode}}<span class="fas fa-check pull-right" aria-hidden="true"></span>{{/ifEqual}}{{label}}
+            {{#if typeLabel}}<span class="cp-calendar-type-badge" title="{{typeLabel}}" aria-label="{{typeLabel}}">{{typeInitial}}</span>{{/if}}
+            <span class="cp-calendar-option-name">{{label}}</span>
+            {{#ifEqual mode ../mode}}<span class="fas fa-check" aria-hidden="true"></span>{{/ifEqual}}
         </a></li>
         {{/each}}
     </ul>

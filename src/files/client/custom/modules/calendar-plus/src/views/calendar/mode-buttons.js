@@ -53,9 +53,13 @@ define('calendar-plus:views/calendar/mode-buttons', [
 
       if (this.isCustomViewAvailable) {
         for (const [index, item] of Definitions.list(this.getPreferences()).entries()) {
+          const typeLabel = this.translate(item.mode, 'modes', 'Calendar');
+
           list.push({
             mode: item.routeMode,
             label: item.name,
+            typeLabel,
+            typeInitial: typeLabel.slice(0, 1).toLocaleUpperCase(),
             labelShort: item.name.slice(0, 2),
             separatorBefore: index === 0,
           });
