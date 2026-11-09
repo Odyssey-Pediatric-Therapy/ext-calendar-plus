@@ -1,5 +1,8 @@
 {
     "labels": {
+        "Next available": "Next available",
+        "Finding available time": "Finding…",
+        "Continue searching": "Continue searching",
         "Print calendar": "Print calendar",
         "Create Timeline": "Create Timeline",
         "Edit Timeline": "Edit Timeline",
@@ -93,6 +96,12 @@
         "Event type": "Event Type"
     },
     "messages": {
+        "Find next available help": "Find the next time when all scheduler users are available, keeping the current duration. Times advance in five-minute increments. Longer searches can be continued.",
+        "Choose timed scheduler values": "Choose a timed start and end and at least one user to find a common time.",
+        "Continue scheduler search": "No common time found through {date}. Continue searching?",
+        "No further scheduler dates": "No further dates can be checked.",
+        "Scheduler availability unavailable": "Availability could not be checked for every selected user. The event time was not changed.",
+        "Could not find scheduler time": "Could not check availability. Please try again.",
         "Preparing calendar PDF": "Preparing calendar PDF…",
         "Could not print calendar": "Could not create the calendar PDF. Please try again.",
         "Select Timeline Members": "Enter a name and select at least one team or user.",

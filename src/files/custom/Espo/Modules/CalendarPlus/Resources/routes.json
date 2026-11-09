@@ -3,5 +3,15 @@
         "route": "/CalendarPlus/Users",
         "method": "post",
         "actionClassName": "Espo\\Modules\\CalendarPlus\\Api\\Calendar\\TimelineUsers"
+    },
+    {
+        "route": "/CalendarPlus/NextAvailable",
+        "method": "post",
+        "actionClassName": "Espo\\Modules\\CalendarPlus\\Api\\Calendar\\NextAvailable"
+    },
+    {
+        "route": "/CalendarPlus/WorkingTimeRanges",
+        "method": "post",
+        "actionClassName": "Espo\\Modules\\CalendarPlus\\Api\\Calendar\\WorkingTimeRanges"
     }
 ]
