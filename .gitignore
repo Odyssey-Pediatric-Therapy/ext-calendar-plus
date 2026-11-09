@@ -18,3 +18,6 @@
 /tests/.runtime/
 /test-results/
 /playwright-report/
+/tests/vendor
+/tests/.fixtures
+/tests/.runtime
