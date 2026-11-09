@@ -103,6 +103,8 @@
         "Select Calendar Members": "Enter a name, choose a calendar type, and select at least one team or person.",
         "Could not update event": "Could not update this event. Check your permissions and try again.",
         "Could not save view settings": "Could not save calendar view settings. Please try again.",
+        "Calendar Users Order Help": "Individually selected users appear first, in the order shown. Team members are added afterward. Each person appears only once.",
+        "Calendar Teams Order Help": "Teams are processed in the order shown. Members are sorted alphabetically within each team and added after individually selected users. Each person appears only once.",
         "Calendar Membership Help": "Dynamic calendars resolve the current team members on every refresh. Static calendars capture the selected teams and users when you save. Later team changes do not change that list. Saving a static calendar again refreshes its captured list. Show inactive users and calendar permissions still apply.",
         "Static Calendar Member Limit": "A static calendar can include up to 300 users. Select fewer teams or users, or use dynamic membership.",
         "Could not capture calendar members": "Could not capture the calendar members. No calendar changes were saved. Please try again.",

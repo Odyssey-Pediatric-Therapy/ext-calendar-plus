@@ -125,8 +125,10 @@ test('one editor exposes Day, Week, Month, and Timeline with both team and peopl
     'month',
     'timeline',
   ]);
-  assert.equal(rows[1][0].view.options.name, 'teams');
-  assert.equal(rows[2][0].view.options.name, 'users');
+  assert.equal(rows[1][0].view.options.name, 'users');
+  assert.equal(rows[2][0].view.options.name, 'teams');
+  assert.equal(rows[1][0].view.options.params.tooltip, true);
+  assert.equal(rows[2][0].view.options.params.tooltip, true);
   assert.equal(editor.headerText, 'Create Calendar');
 });
 
@@ -319,7 +321,7 @@ test('default Timeline editor preserves old users and exposes membership setting
   const rows = editor.recordView.options.detailLayout[0].rows;
   assert.deepEqual(
     Array.from(rows, (row) => row[0].view.options.name),
-    ['teams', 'users', 'membershipMode'],
+    ['users', 'teams', 'membershipMode'],
   );
   assert.equal(editor.dropdownItemList.length, 0);
   assert.equal(editor.headerText, 'Edit Timeline');

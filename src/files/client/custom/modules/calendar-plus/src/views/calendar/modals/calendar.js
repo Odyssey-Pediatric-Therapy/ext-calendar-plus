@@ -123,11 +123,25 @@ define('calendar-plus:views/calendar/modals/calendar', [
       if (!settingsOnly)
         rows.push(
           [
-            { view: new Teams({ name: 'teams', labelText: this.translate('teams', 'fields') }) },
+            {
+              view: new Users({
+                name: 'users',
+                labelText: this.translate('users', 'fields'),
+                tooltipText: this.translate('Calendar Users Order Help', 'messages', 'Calendar'),
+                params: { tooltip: true },
+              }),
+            },
             false,
           ],
           [
-            { view: new Users({ name: 'users', labelText: this.translate('users', 'fields') }) },
+            {
+              view: new Teams({
+                name: 'teams',
+                labelText: this.translate('teams', 'fields'),
+                tooltipText: this.translate('Calendar Teams Order Help', 'messages', 'Calendar'),
+                params: { tooltip: true },
+              }),
+            },
             false,
           ],
           [
