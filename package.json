@@ -1,6 +1,6 @@
 {
   "name": "espocrm-ext-calendar-plus",
-  "version": "1.2.0",
+  "version": "1.2.2",
   "description": "Calendar Plus: shared calendars, saved views, and team scheduling for EspoCRM.",
   "scripts": {
     "sa": "php site/vendor/bin/phpstan analyse --configuration phpstan.neon",
@@ -22,7 +22,9 @@
     "test:browsers": "node tests/support/install-browser.mjs",
     "test:integration": "npm run test:prepare && playwright test --project=api",
     "test:e2e": "npm run test:prepare && playwright test --project=chromium --project=mobile",
-    "test:system": "npm run test:prepare && playwright test"
+    "test:system": "npm run test:prepare && playwright test",
+    "seed": "php tests/seed-calendar.php",
+    "empty": "php tests/empty-calendar.php"
   },
   "type": "module",
   "author": "Anthony Andriano",

@@ -21,3 +21,5 @@ The fixture includes 15 named users across five teams with overlapping membershi
 The ignored `tests/.runtime/fixtures.json` records IDs, dates, and fixture credentials. The default test login is `cp_admin` / `CalendarPlusTest!2026`; override the password using `CP_TEST_PASSWORD` when preparing or seeding. These credentials belong only to the isolated test site.
 
 API tests cover authentication, calendar permissions, team expansion and ordering, inactive-user inclusion, selection validation, saved preferences, and persisted event relationships. Browser tests exercise installed extension loading, view switching with real events, and the search dialog on desktop and mobile. They complement the existing unit tests; they do not guarantee every calendar feature. Failed browser tests retain screenshots and traces in `test-results/`.
+
+For Faker-generated schedules in the local development site, see [Manual calendar fixtures](README-seeding.md). The manual seed and empty scripts are separate from these automated-test fixtures.

@@ -1,0 +1,7 @@
+{
+  "name": "calendar-plus/test-fixtures",
+  "description": "Development-only dependencies for the manual calendar fixture seeder",
+  "require-dev": {
+    "fakerphp/faker": "^1.24"
+  }
+}
