@@ -13,3 +13,8 @@
 # Generated from npm dependencies by install and build.
 /src/files/client/custom/modules/calendar-plus/lib/*.min.js
 /src/files/client/custom/modules/calendar-plus/lib/*.LICENSE
+
+# Repo-local integration and browser test runtime and artifacts.
+/tests/.runtime/
+/test-results/
+/playwright-report/
