@@ -8,6 +8,15 @@ There is no dependency on Odyssey. Existing saved calendars and timelines remain
 
 Admin → **Extension Settings → Calendar Plus** provides switches for hover tooltips and Month/Week color gradients, both enabled by default. Day and Timeline always use solid entity colors. Existing module identifiers and saved calendar preferences remain compatible.
 
+## Documentation
+
+- [Features](docs/Features.md) — Calendar Plus capabilities and settings.
+- [Calendar and timeline details](docs/calendar-timelines.md) — saved views, team membership, and calendar behavior.
+- [Testing guide](tests/README.md) — unit, API integration, and desktop/mobile browser tests.
+- [Test data: seed and empty](tests/README-seeding.md) — generate schedules, optionally create users and teams, and clear test data.
+- [Demo video script](docs/demo-video-script.md) — walkthrough for presenting the extension.
+- [Third-party libraries](src/files/client/custom/modules/calendar-plus/lib/THIRD-PARTY.md) — bundled library details and licenses.
+
 ## Development and packaging
 
 - `npm test` runs the client tests and PHP unit tests using the local EspoCRM site.
