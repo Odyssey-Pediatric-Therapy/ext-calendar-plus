@@ -18,3 +18,7 @@
 /tests/.runtime/
 /test-results/
 /playwright-report/
+
+# Manual demo fixture dependencies.
+/tests/vendor/
+/tests/.fixtures/
