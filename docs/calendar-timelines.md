@@ -33,6 +33,14 @@ The default Timeline reads existing sharedCalendarUserList selections automatica
 
 Person drops use the standard record update API and check record edit access plus permissions for the field being changed. Meetings, Calls, and custom event types with a standard users attendee relationship append the destination person to usersIds without changing assignedUserId, existing attendee responses, contacts, or leads. An empty attendee list still adds the person; an existing attendee is not duplicated and their response is not reset. Types without that attendee field append to collaboratorsIds when they have a standard collaborators relationship to User. Existing collaborators remain and repeated drops do not duplicate them. Only types without both relationships update assignedUserId instead. A non-editable or unreadable attendee or collaborator list rejects the drop rather than changing ownership. Hidden destination people are shown after a successful drop; failed Day drops restore the source and destination calendars.
 
+# Find a common meeting time
+
+The existing Meeting and Call scheduler includes a **Next available** button. It searches forward from the entered start time for the first common slot long enough for the current duration. Repeated clicks advance to subsequent slots in five-minute increments. A result updates the unsaved start and end fields and moves the scheduler to the selected time.
+
+The search has no fixed date cutoff and uses the same user participants, busy periods, working-time calendars, and permissions as Espo's scheduler. If searching takes a few seconds without finding a match, it shows the last date checked and offers **Continue searching**. Continuing resumes from the saved position, including slots that cross midnight, without re-querying earlier days. Long periods already known to be blocked are skipped directly. Configure Espo working-time calendars to limit suggestions to working hours. Existing records are excluded from their own conflict checks. All-day events are not supported by this button.
+
+When a search pauses, or availability cannot be checked for every selected user, the times remain unchanged and the scheduler shows a message. Changing participants or event times while a search is running cancels that result.
+
 # Extension settings
 
 In Administration, the shared Extension Settings section contains a Calendar Plus row. Its settings page provides Enable tooltip on hover and Enable color gradient in month and week mode. Both default to enabled when unset. Disabling gradients makes shared Month and Week events use solid entity colors. Day and Timeline always use solid entity colors. Tooltips apply to every event in standard and custom Month, Week, Day, and Timeline calendars, including personal calendars. Settings are system-wide and use the standard admin-only Settings save flow. The PHP module is CalendarPlus and the client module is calendar-plus.

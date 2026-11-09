@@ -1,0 +1,29 @@
+{
+    "schedulerView": "calendar-plus:views/scheduler/scheduler",
+    "bottomPanels": {
+        "detail": [
+            {
+                "name": "scheduler",
+                "label": "Scheduler",
+                "view": "calendar-plus:views/scheduler/panel",
+                "order": 3
+            }
+        ],
+        "edit": [
+            {
+                "name": "scheduler",
+                "label": "Scheduler",
+                "view": "calendar-plus:views/scheduler/panel",
+                "order": 1
+            }
+        ],
+        "editSmall": [
+            {
+                "name": "scheduler",
+                "label": "Scheduler",
+                "view": "calendar-plus:views/scheduler/panel",
+                "order": 1
+            }
+        ]
+    }
+}
