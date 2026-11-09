@@ -36,6 +36,7 @@ define('calendar-plus:calendar-search', ['moment', 'calendar-plus:calendar-visib
 
     if (!Object.keys(styles).length && typeof field.optionsReference === 'string') {
       const [entity, attribute] = field.optionsReference.split('.');
+
       styles = view.getMetadata().get(['entityDefs', entity, 'fields', attribute, 'style']) || {};
     }
 
@@ -116,6 +117,7 @@ define('calendar-plus:calendar-search', ['moment', 'calendar-plus:calendar-visib
     for (const relationship of ['assignedUsers', 'users', 'contacts', 'leads', 'collaborators']) {
       if (fields[relationship]) select.push(`${relationship}Ids`, `${relationship}Names`);
     }
+
     return select;
   };
 
@@ -143,6 +145,7 @@ define('calendar-plus:calendar-search', ['moment', 'calendar-plus:calendar-visib
       );
     } else {
       const field = fields.dateStart ? 'dateStart' : 'dateEnd';
+
       dateRanges.push({
         type: 'and',
         value: [
@@ -188,7 +191,9 @@ define('calendar-plus:calendar-search', ['moment', 'calendar-plus:calendar-visib
       ['attendeeLeadId', 'leads'],
     ]) {
       if (!filters[filter]) continue;
+
       if (!fields[relationship] && !links[relationship]) return null;
+
       where.push(condition('linkedWith', relationship, [filters[filter]]));
     }
 
@@ -196,7 +201,9 @@ define('calendar-plus:calendar-search', ['moment', 'calendar-plus:calendar-visib
       const statuses = filters.statusList.filter((status) =>
         fields.status?.options?.includes(status),
       );
+
       if (!statuses.length) return null;
+
       where.push(condition('in', 'status', statuses));
     }
 
@@ -235,14 +242,19 @@ define('calendar-plus:calendar-search', ['moment', 'calendar-plus:calendar-visib
     const worker = async () => {
       while (index < scopes.length) {
         const scope = scopes[index++];
+
         if (offsets[scope] === null) continue;
+
         const offset = offsets[scope] || 0;
         const query = buildQuery(view, scope, filters, offset);
+
         if (!query) continue;
 
         try {
           const response = await Espo.Ajax.getRequest(scope, query);
+
           if (!Array.isArray(response.list)) throw new Error('Invalid search response');
+
           results.push(...response.list.map((record) => ({ ...record, scope })));
           nextOffsets[scope] = nextOffset(response, query, offset);
         } catch (error) {

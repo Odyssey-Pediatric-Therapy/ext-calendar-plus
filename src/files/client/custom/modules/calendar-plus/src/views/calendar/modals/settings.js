@@ -19,7 +19,9 @@ define('calendar-plus:views/calendar/modals/settings', [
         { name: 'save', label: 'Save', style: 'primary', onClick: () => this.actionSave() },
         { name: 'cancel', label: 'Cancel', onClick: () => this.close() },
       ];
+
       const parent = this.options.calendar;
+
       this.settingsForm = new SettingsForm(this);
       this.settingsMode = Definitions.normalizeMode(parent.viewMode || parent.mode);
       this.model = new Model({
@@ -27,10 +29,12 @@ define('calendar-plus:views/calendar/modals/settings', [
         mode: this.settingsMode,
       });
       this.model.name = 'CalendarViewSettings';
+
       const detailLayout = this.settingsForm.layout(
         this.settingsMode,
         this.options.inactiveUsersAvailable,
       );
+
       this.settingNames = this.settingsForm.settingNames;
 
       this.recordView = new Record({
@@ -49,12 +53,14 @@ define('calendar-plus:views/calendar/modals/settings', [
       if (!data || this.recordView.validate()) return;
 
       const values = this.settingsForm.values(data, this.settingsMode);
+
       if (!values) return;
 
       const preferences = this.getPreferences();
       const previous = preferences.get('calendarPlusViewSettings');
       const key = Definitions.viewSettingsKey(preferences, this.options.mode);
       const next = { ...(previous || {}), [key]: { ...(previous?.[key] || {}), ...values } };
+
       this.saving = true;
       this.disableButton('save');
 

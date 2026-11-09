@@ -3,6 +3,7 @@ define('calendar-plus:calendar-visibility', ['calendar-plus:calendar-definitions
 ) => {
   const loadedUserIds = (calendar) => {
     if (calendar.isSharedTimeGrid?.()) return (calendar.sharedUsers || []).map((user) => user.id);
+
     if (Array.isArray(calendar.userList)) return calendar.userList.map((user) => user.id);
 
     return [calendar.options?.userId || calendar.getUser().id];
@@ -35,6 +36,7 @@ define('calendar-plus:calendar-visibility', ['calendar-plus:calendar-definitions
       }
     } else {
       members = assigned;
+
       const fields = calendar.getMetadata().get(['entityDefs', scope, 'fields']) || {};
       const links = calendar.getMetadata().get(['entityDefs', scope, 'links']) || {};
 
@@ -58,12 +60,14 @@ define('calendar-plus:calendar-visibility', ['calendar-plus:calendar-definitions
     const assigned = assignedUserIds(calendar, scope, attributes);
 
     if (!members.length && !assigned.length) return null;
+
     let included = includedUserIds(calendar, scope, attributes, options);
 
     if (!included.length) return 'Created event users not in calendar';
 
     if (['Meeting', 'Call'].includes(scope)) {
       included = included.filter((id) => attributes.usersColumns?.[id]?.status !== 'Declined');
+
       if (!included.length) return 'Created event attendees declined';
     }
 
@@ -80,16 +84,19 @@ define('calendar-plus:calendar-visibility', ['calendar-plus:calendar-definitions
       calendar.mode || 'timeline',
     );
     const canceled = calendar.getMetadata().get(['scopes', scope, 'canceledStatusList']) || [];
+
     if (settings.showCanceledEvents === false && canceled.includes(attributes.status)) {
       return 'Created event status hidden';
     }
 
     const completed = calendar.getMetadata().get(['scopes', scope, 'completedStatusList']) || [];
+
     if (settings.showCompletedEvents === false && completed.includes(attributes.status)) {
       return 'Created event status hidden';
     }
 
     const currentUserId = calendar.getUser().id;
+
     if (
       settings.showDeclinedEvents === false &&
       attributes.usersColumns?.[currentUserId]?.status === 'Declined'
@@ -102,6 +109,7 @@ define('calendar-plus:calendar-visibility', ['calendar-plus:calendar-definitions
 
   const renderWarning = (view, reason) => {
     if (!view.el) return;
+
     const container = view.el.querySelector('.modal-body') || view.el;
     let warning = container.querySelector('.cp-calendar-create-warning');
 

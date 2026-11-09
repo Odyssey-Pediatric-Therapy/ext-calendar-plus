@@ -36,6 +36,7 @@ define('calendar-plus:views/calendar/calendar', [
 
     events = {
       ...this.events,
+
       'click [data-action="searchCalendar"]': function (event) {
         event.preventDefault();
         this.actionSearchCalendar();
@@ -56,6 +57,7 @@ define('calendar-plus:views/calendar/calendar', [
     showSearchResult(record) {
       this.searchResult = record;
       this.applyViewSettings();
+
       const preview = this.includeSearchResult([])[0];
       const date =
         (preview?.start && this.getDateTime().toMoment(preview.start).format('YYYY-MM-DD')) ||
@@ -64,13 +66,16 @@ define('calendar-plus:views/calendar/calendar', [
         this.getDateTime()
           .toMoment(record.dateStart || record.dateEnd)
           .format('YYYY-MM-DD');
+
       this.calendar.gotoDate(date);
       this.updateDate();
+
       if (record.dateStart && !record.dateStartDate) {
         this.calendar.scrollToTime(
           this.getDateTime().toMoment(record.dateStart).format('HH:mm:ss'),
         );
       }
+
       this.actionRefresh();
       Definitions.highlightSearchResult(this);
     }
@@ -83,7 +88,9 @@ define('calendar-plus:views/calendar/calendar', [
         return events;
 
       const [event] = this.convertToFcEvents([this.searchResult]);
+
       if (!event) return events;
+
       const ids = this.searchResult.calendarUserIds;
 
       // A search-only preview is read-only; opening the record uses normal permissions.
@@ -102,24 +109,30 @@ define('calendar-plus:views/calendar/calendar', [
 
     clearSearchReveal() {
       if (!this.searchResult) return;
+
       this.searchResult = null;
+
       for (const element of this.eventAppearances.keys())
         element.classList.toggle('cp-search-match', false);
+
       this.applyViewSettings();
     }
 
     actionPrevious() {
       this.clearSearchReveal();
+
       return super.actionPrevious();
     }
 
     actionNext() {
       this.clearSearchReveal();
+
       return super.actionNext();
     }
 
     actionToday() {
       this.clearSearchReveal();
+
       return super.actionToday();
     }
 
@@ -170,10 +183,12 @@ define('calendar-plus:views/calendar/calendar', [
       }
 
       this.extendedProps = [...this.extendedProps, 'calendarUserIds', 'visibleCalendarUserIds'];
+
       const hidden =
         Definitions.viewSettings(this.getPreferences(), this.mode).rememberHiddenPeople === false
           ? []
           : this.getStorage().get('calendarPlus', this.personFilterKey());
+
       this.hiddenUserIds = new Set(
         Array.isArray(hidden) ? hidden.filter((id) => typeof id === 'string') : [],
       );
@@ -194,13 +209,16 @@ define('calendar-plus:views/calendar/calendar', [
     afterRender() {
       // Core concatenates minutes into HH:mm:ss; FullCalendar requires two minute digits.
       const stored = Definitions.viewSettings(this.getPreferences(), this.mode);
+
       this.restoreTimePreferences(stored);
 
       const minutes = this.slotDuration;
+
       this.slotDuration = String(minutes).padStart(2, '0');
 
       try {
         const result = super.afterRender();
+
         ActiveCalendar.register(this);
         this.applyViewSettings();
 
@@ -227,6 +245,7 @@ define('calendar-plus:views/calendar/calendar', [
 
     applyViewSettings(scroll = false) {
       const settings = Definitions.viewSettings(this.getPreferences(), this.mode);
+
       Definitions.applyAppearance(this);
 
       if (!this.calendar) return;
@@ -253,6 +272,7 @@ define('calendar-plus:views/calendar/calendar', [
         start: '00:00:00',
         end: '24:00:00',
       };
+
       this.eventTooltip?.refresh();
       this.calendar.batchRendering(() => {
         this.calendar.setOption('slotMinTime', range.start);
@@ -337,9 +357,11 @@ define('calendar-plus:views/calendar/calendar', [
 
     setupMode() {
       super.setupMode();
+
       const item = (this.getPreferences().get('calendarViewDataList') || []).find(
         (entry) => entry.id === this.viewId,
       );
+
       this.selectedUserIds = item?.userIdList || [];
 
       if (this.isCustomView && (this.teamIdList?.length || this.selectedUserIds.length)) {
@@ -375,6 +397,7 @@ define('calendar-plus:views/calendar/calendar', [
         (this.getEventTypeCanceledStatusList?.(event.scope) || []).includes(event.status);
 
       if (!color || !ended) return color;
+
       // Match Espo's status shading; generated person colors can also use HSL.
 
       if (/^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(color)) return this.shadeColor(color, 0.4);
@@ -397,6 +420,7 @@ define('calendar-plus:views/calendar/calendar', [
 
     fillColor(event) {
       super.fillColor(event);
+
       const ids = event.visibleCalendarUserIds || event.calendarUserIds;
 
       if (this.isSharedTimeGrid() && ids?.length) {
@@ -406,6 +430,7 @@ define('calendar-plus:views/calendar/calendar', [
 
     styleDeclinedEvent(event) {
       const ids = event.visibleCalendarUserIds || event.calendarUserIds;
+
       event.color = ids?.length
         ? this.colorForEvent(event, ids[0])
         : this.statusColor(event.originalColor || Colors.entityColor(this, event.scope), event);
@@ -428,6 +453,7 @@ define('calendar-plus:views/calendar/calendar', [
 
         return super.fetchEvents(from, to, async (events) => {
           events = this.includeSearchResult(events);
+
           if (Definitions.shouldFilterEvents(this, events)) {
             events = await Definitions.filterEvents(this, events);
           }
@@ -498,6 +524,7 @@ define('calendar-plus:views/calendar/calendar', [
     convertSharedEvents(data, users) {
       const allowedIds = new Set(users.map((user) => user.id));
       const merged = new Map();
+
       for (const event of data) {
         const key = `${event.scope}-${event.id}`;
         const previous = merged.get(key);
@@ -508,9 +535,12 @@ define('calendar-plus:views/calendar/calendar', [
             ...(event.userId ? [event.userId] : []),
           ]),
         ];
+
         merged.set(key, { ...event, userIdList: ids });
       }
+
       const records = [...merged.values()];
+
       return this.convertToFcEvents(records)
         .map((event, index) => {
           const ids = records[index].userIdList.filter((id) => allowedIds.has(id)).sort();
@@ -576,18 +606,23 @@ define('calendar-plus:views/calendar/calendar', [
 
     sharedEventContent(info) {
       const frame = document.createElement('div');
+
       frame.className = 'fc-event-main-frame cp-calendar-event-content';
 
       if (info.timeText) {
         const time = document.createElement('div');
+
         time.className = 'fc-event-time';
         time.textContent = info.timeText;
         frame.append(time);
       }
 
       const titleContainer = document.createElement('div');
+
       titleContainer.className = 'fc-event-title-container';
+
       const title = document.createElement('div');
+
       title.className = 'fc-event-title';
       title.textContent = info.event.title;
       titleContainer.append(title);
@@ -633,6 +668,7 @@ define('calendar-plus:views/calendar/calendar', [
         if (visible) this.hiddenUserIds.delete(user.id);
         else this.hiddenUserIds.add(user.id);
       }
+
       this.applyPersonFilters();
     }
 
@@ -656,6 +692,7 @@ define('calendar-plus:views/calendar/calendar', [
           if (!source) continue;
 
           const filtered = this.filteredEvent(source);
+
           event.setExtendedProp('visibleCalendarUserIds', filtered.visibleCalendarUserIds);
           event.setProp('display', filtered.display);
           event.setProp('backgroundColor', filtered.color);
@@ -713,6 +750,7 @@ define('calendar-plus:views/calendar/calendar', [
       const personColor = person ? this.statusColor(this.colorForUser(person), record) : null;
       const styled = !!person && !!entity && event.display !== 'inverse-background';
       const gradient = styled && this.usePersonGradient();
+
       element.classList.toggle('cp-event-gradient', gradient);
       element.style.backgroundImage = gradient ? Colors.gradient(personColor, entity) : '';
 
@@ -725,6 +763,7 @@ define('calendar-plus:views/calendar/calendar', [
     updatePersonHighlight() {
       const candidate = this.hoveredUserId || this.focusedUserId;
       const id = candidate && !this.hiddenUserIds.has(candidate) ? candidate : null;
+
       for (const [element, ids] of this.eventElements) {
         element.classList.toggle('cp-person-event-dimmed', !!id && !ids.includes(id));
         element.classList.toggle('cp-person-event-highlighted', !!id && ids.includes(id));
@@ -735,6 +774,7 @@ define('calendar-plus:views/calendar/calendar', [
       const swatch = document.createElement('span');
       const name = this.sharedUsers.find((user) => user.id === id)?.name || '';
       const parts = name.trim().split(/\s+/).filter(Boolean);
+
       swatch.textContent = (
         parts.length > 1 ? parts[0][0] + parts[parts.length - 1][0] : name.slice(0, 2)
       ).toUpperCase();
@@ -748,6 +788,7 @@ define('calendar-plus:views/calendar/calendar', [
     refreshLegendState() {
       for (const [id, { button, status }] of this.legendButtons || []) {
         const visible = !this.hiddenUserIds.has(id);
+
         button.setAttribute('aria-pressed', String(visible));
         button.style.opacity = visible ? '1' : '0.5';
         status.textContent = visible ? '✓' : '−';
@@ -772,12 +813,16 @@ define('calendar-plus:views/calendar/calendar', [
       }
 
       this.legendElement.replaceChildren();
+
       const style = document.createElement('style');
+
       style.textContent =
         '.cp-person-event-dimmed {opacity:.18 !important;} .cp-person-event-highlighted {outline:2px solid var(--text-color, #222);outline-offset:2px;} .cp-person-toggle:focus-visible {outline:2px solid var(--text-color, #222);outline-offset:2px;}';
       this.legendElement.append(style);
+
       const toggle = this.createLegendToggle();
       const items = document.createElement('div');
+
       items.className = 'dropdown-menu cp-person-legend-items';
       items.setAttribute('role', 'group');
       items.setAttribute('aria-label', this.translate('Calendar users', 'labels', 'Calendar'));
@@ -786,8 +831,10 @@ define('calendar-plus:views/calendar/calendar', [
       this.legendButtons = new Map();
       this.hoveredUserId = null;
       this.focusedUserId = null;
+
       for (const user of this.sharedUsers) {
         const { button, status } = this.createPersonToggle(user);
+
         this.legendButtons.set(user.id, { button, status });
         items.append(button);
       }
@@ -797,6 +844,7 @@ define('calendar-plus:views/calendar/calendar', [
       this.refreshLegendState();
       this.updatePersonHighlight();
       this.updateLegendLayout();
+
       if (!this.legendResizeObserver && typeof ResizeObserver !== 'undefined') {
         this.legendResizeObserver = new ResizeObserver(() => this.updateLegendLayout());
         this.legendResizeObserver.observe(this.legendElement);
@@ -805,15 +853,20 @@ define('calendar-plus:views/calendar/calendar', [
 
     createLegendToggle() {
       const toggle = document.createElement('button');
+
       toggle.type = 'button';
       toggle.className = 'btn btn-default dropdown-toggle cp-person-legend-toggle';
       toggle.setAttribute('data-toggle', 'dropdown');
       toggle.setAttribute('aria-expanded', 'false');
       toggle.disabled = !this.sharedUsers.length;
+
       const icon = document.createElement('span');
+
       icon.className = 'fas fa-users';
       icon.setAttribute('aria-hidden', 'true');
+
       const caret = document.createElement('span');
+
       caret.className = 'caret';
       caret.setAttribute('aria-hidden', 'true');
       toggle.append(
@@ -821,21 +874,28 @@ define('calendar-plus:views/calendar/calendar', [
         document.createTextNode(this.translate('Calendar users', 'labels', 'Calendar')),
         caret,
       );
+
       return toggle;
     }
 
     createPersonToggle(user) {
       const button = document.createElement('button');
+
       button.type = 'button';
       button.className = 'btn btn-default btn-sm cp-person-toggle';
       button.style.cssText = 'display:inline-flex;align-items:center;gap:6px;';
+
       const status = document.createElement('span');
+
       status.setAttribute('aria-hidden', 'true');
+
       const badge = this.colorSwatch(user.id);
+
       badge.setAttribute('aria-hidden', 'true');
       button.append(badge, document.createTextNode(user.name), status);
       button.addEventListener('click', (event) => {
         event?.stopPropagation();
+
         if (!this.personDropDrag) this.setPersonVisible(user.id, this.hiddenUserIds.has(user.id));
       });
       button.addEventListener('mouseenter', () => {
@@ -854,6 +914,7 @@ define('calendar-plus:views/calendar/calendar', [
         this.focusedUserId = null;
         this.updatePersonHighlight();
       });
+
       return { button, status };
     }
 
@@ -864,6 +925,7 @@ define('calendar-plus:views/calendar/calendar', [
           ['Hide all people', false],
         ]) {
           const button = document.createElement('button');
+
           button.type = 'button';
           button.className = 'btn btn-text btn-sm';
           button.textContent = this.translate(label, 'labels', 'Calendar');
@@ -875,6 +937,7 @@ define('calendar-plus:views/calendar/calendar', [
         }
       } else {
         const empty = document.createElement('span');
+
         empty.textContent = this.translate('No calendar users', 'messages', 'Calendar');
         items.append(empty);
       }
@@ -882,16 +945,20 @@ define('calendar-plus:views/calendar/calendar', [
 
     updateLegendLayout() {
       const legend = this.legendElement;
+
       if (!legend?.clientWidth || !this.legendItems) return;
 
       // Measure the single-row buttons even while the live menu is collapsed.
       const measure = this.legendItems.cloneNode(true);
+
       measure.className = 'cp-person-legend-measure';
       measure.setAttribute('aria-hidden', 'true');
       measure.style.cssText =
         'position:absolute;visibility:hidden;pointer-events:none;display:flex;flex-wrap:nowrap;align-items:center;gap:8px;width:max-content;max-width:none;top:0;left:0;';
       legend.append(measure);
+
       const requiredWidth = measure.getBoundingClientRect().width;
+
       measure.remove();
       legend.classList.toggle('cp-person-legend-compact', requiredWidth > legend.clientWidth + 1);
     }
@@ -906,6 +973,7 @@ define('calendar-plus:views/calendar/calendar', [
 
     clearDayColumns() {
       for (const { calendar } of this.dayCalendars || []) calendar.destroy();
+
       this.dayCalendars = [];
       this.dayColumnsElement?.remove();
       this.dayColumnsElement = null;
@@ -916,7 +984,9 @@ define('calendar-plus:views/calendar/calendar', [
       const key = users.map((user) => `${user.id}:${user.name}`).join('|');
       const date = this.calendar.getDate().valueOf();
       const dateChanged = this.dayColumnsDate !== date;
+
       this.dayColumnsDate = date;
+
       let reposition = dateChanged;
       let scrollTop;
 
@@ -924,22 +994,28 @@ define('calendar-plus:views/calendar/calendar', [
         // An empty loading placeholder has no meaningful scroll position to restore.
         scrollTop =
           !dateChanged && this.dayCalendars.length ? this.dayColumnsElement?.scrollTop : undefined;
+
         const scrollLeft = this.dayColumnsElement?.scrollLeft;
+
         this.clearDayColumns();
         this.dayColumnsKey = key;
         this.dayColumnsElement = document.createElement('div');
         this.dayColumnsElement.className = 'calendar-plus-day-columns';
+
         const style = document.createElement('style');
+
         style.textContent =
           '.calendar-plus-day-columns .fc-daygrid-day-frame {height:76px;min-height:76px;max-height:76px;overflow:auto;} .calendar-plus-day-columns .fc-timegrid-slot {height:24px;}';
         this.dayColumnsElement.append(style);
         this.dayColumnsElement.style.cssText =
           'display:flex;overflow-x:auto;align-items:flex-start;';
         this.$calendar.after(this.dayColumnsElement);
+
         for (const user of users) this.createDayColumn(user);
 
         if (!users.length && this.sharedUsers.length) {
           const empty = document.createElement('p');
+
           empty.className = 'text-muted';
           empty.textContent = this.translate('All calendar people hidden', 'messages', 'Calendar');
           this.dayColumnsElement.append(empty);
@@ -968,6 +1044,7 @@ define('calendar-plus:views/calendar/calendar', [
 
       if (reposition) {
         const container = this.dayColumnsElement;
+
         this.syncColumnScroll(scrollTop);
         // Reapply once event sources and date changes have completed their DOM updates.
         queueMicrotask(() => {
@@ -984,14 +1061,20 @@ define('calendar-plus:views/calendar/calendar', [
 
     createDayColumn(user) {
       const column = document.createElement('section');
+
       column.style.cssText = 'flex:1 0 220px;min-width:220px;';
+
       const header = document.createElement('div');
+
       header.style.cssText = `position:sticky;top:0;z-index:5;background:var(--table-bg, #fff);height:44px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:10px;font-weight:600;text-align:center;border-top:3px solid ${this.colorForUser(user.id)};`;
       header.title = user.name;
       header.textContent = user.name;
+
       const body = document.createElement('div');
+
       column.append(header, body);
       this.dayColumnsElement.append(column);
+
       const options = Object.fromEntries(
         optionNames.map((name) => [name, this.calendar.getOption(name)]),
       );
@@ -1008,8 +1091,10 @@ define('calendar-plus:views/calendar/calendar', [
         allDaySlot: true,
         dayMaxEvents: 2,
         droppable: true,
+
         select: (info) => {
           const original = this.options;
+
           this.options = { ...original, userId: user.id, userName: user.name };
 
           try {
@@ -1020,28 +1105,39 @@ define('calendar-plus:views/calendar/calendar', [
 
           calendar.unselect();
         },
+
         eventAllow: (drop, event) =>
           !!this.personDropDrag &&
           this.dayCalendars.some((item) => item.calendar === this.personDropDrag.calendar) &&
           (!options.eventAllow || options.eventAllow(drop, event)),
+
         eventDragStart: (info) => this.startPersonDropDrag(info, calendar),
+
         eventDragStop: (info) => this.stopPersonDropDrag(info),
+
         eventLeave: (info) => {
           if (this.personDropDrag) this.personDropDrag.restoreSource = info.revert;
         },
+
         eventReceive: (info) => this.receivePersonDrop(info, user.id),
+
         eventContent: (info) => this.sharedEventContent(info),
+
         eventDidMount: (info) => this.registerEventElement(info, user.id),
+
         eventWillUnmount: (info) => this.unregisterEventElement(info),
+
         eventDrop: async (info) => {
           await options.eventDrop(info);
           this.actionRefresh();
         },
+
         eventResize: async (info) => {
           await options.eventResize(info);
           this.actionRefresh();
         },
       });
+
       this.dayCalendars.push({ calendar, userId: user.id });
       calendar.render();
     }
@@ -1084,19 +1180,23 @@ define('calendar-plus:views/calendar/calendar', [
       this.finishPersonDropDrag();
       this.personDropDrag = { event: info.event, calendar };
       this.legendElement?.classList.toggle('cp-person-drop-active', true);
+
       const label = {
         users: 'Drop to add attendee',
         collaborators: 'Drop to add collaborator',
         assignedUser: 'Drop to reassign',
       }[this.personDropField(info.event.extendedProps?.scope)];
+
       for (const [id, { button }] of this.legendButtons || []) {
         button.title =
           this.translate(label, 'labels', 'Calendar') +
           ' · ' +
           (this.sharedUsers.find((user) => user.id === id)?.name || '');
       }
+
       this.personDropPointerMove = (event) => {
         const target = this.legendUserAt(event);
+
         for (const [id, { button }] of this.legendButtons || []) {
           button.classList.toggle('cp-person-drop-target', id === target);
         }
@@ -1114,6 +1214,7 @@ define('calendar-plus:views/calendar/calendar', [
         // The legend is outside FullCalendar's date grid; its own drag reverts naturally.
         void this.dropEventOnPerson(info.event, userId);
       }
+
       // FullCalendar emits eventLeave/eventReceive immediately after eventDragStop.
 
       queueMicrotask(() => {
@@ -1130,9 +1231,11 @@ define('calendar-plus:views/calendar/calendar', [
 
       this.personDropDrag = null;
       this.legendElement?.classList.toggle('cp-person-drop-active', false);
+
       for (const { button } of this.legendButtons?.values() || []) {
         button.classList.toggle('cp-person-drop-target', false);
       }
+
       this.refreshLegendState();
     }
 
@@ -1152,6 +1255,7 @@ define('calendar-plus:views/calendar/calendar', [
 
         if (!targetActive || (drag && !sourceActive)) this.actionRefresh();
       };
+
       // Only accept events dragged from a column in this shared calendar.
 
       if (
@@ -1177,6 +1281,7 @@ define('calendar-plus:views/calendar/calendar', [
       const props = event.extendedProps;
       const attributes = {};
       const delta = event.start.getTime() - originalEvent.start.getTime();
+
       for (const name of ['dateStart', 'dateEnd']) {
         if (!props[name]) continue;
 
@@ -1184,6 +1289,7 @@ define('calendar-plus:views/calendar/calendar', [
           .toMoment(props[name])
           .add(delta, 'milliseconds')
           .format(this.getDateTime().internalDateTimeFormat);
+
         attributes[name] = this.convertDateTime(value);
       }
 
@@ -1219,16 +1325,20 @@ define('calendar-plus:views/calendar/calendar', [
 
       try {
         const fieldName = this.personDropField(scope);
+
         this.assertPersonFieldEditable(scope, fieldName);
 
         const model = await this.getModelFactory().create(scope);
+
         model.id = recordId;
         await model.fetch();
 
         if (!this.getAcl().checkModel(model, 'edit')) throw new Error('Event is not editable.');
 
         const dates = moveTime ? this.movedEventDates(event, originalEvent) : {};
+
         this.assertDropDatesEditable(scope, dates);
+
         const attributes = this.personDropAttributes(model, fieldName, userId, dates);
 
         if (Object.keys(attributes).length) {
@@ -1302,6 +1412,7 @@ define('calendar-plus:views/calendar/calendar', [
 
         if (!Array.isArray(participantIds))
           throw new Error('The current participant list is unavailable.');
+
         // Append only: preserve all existing participants, response statuses, and ownership.
 
         if (!participantIds.includes(userId))
@@ -1309,12 +1420,14 @@ define('calendar-plus:views/calendar/calendar', [
       } else if (model.get('assignedUserId') !== userId) {
         attributes.assignedUserId = userId;
       }
+
       return attributes;
     }
 
     syncColumnScroll(scrollTop) {
       // The columns have natural height inside one vertical viewport.
       const container = this.dayColumnsElement;
+
       container.style.maxHeight = `${this.getCalculatedHeight()}px`;
       container.style.overflowY = 'auto';
 
@@ -1329,6 +1442,7 @@ define('calendar-plus:views/calendar/calendar', [
       if (slot) {
         const header = container.querySelector('section > div:first-child');
         const headerHeight = header?.getBoundingClientRect().height || 0;
+
         container.scrollTop = Math.max(
           0,
           (container.scrollTop || 0) +

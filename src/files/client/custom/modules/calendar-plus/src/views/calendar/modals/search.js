@@ -18,6 +18,7 @@ define('calendar-plus:views/calendar/modals/search', [
 
     events = {
       ...this.events,
+
       'keydown .record-container input': function (event) {
         if (
           event.key !== 'Enter' ||
@@ -48,6 +49,7 @@ define('calendar-plus:views/calendar/modals/search', [
           name: 'search',
           label: this.translate('Search', 'labels', 'Calendar'),
           style: 'primary',
+
           onClick: () => this.actionSearch(),
         },
         { name: 'close', label: 'Close', onClick: () => this.close() },
@@ -58,10 +60,12 @@ define('calendar-plus:views/calendar/modals/search', [
         this.searchRemoved = true;
         this.revision++;
       });
+
       const calendar = this.options.calendar;
       const date = calendar.calendar?.getDate() || calendar.date || this.getDateTime().getToday();
       const month = moment(date);
       const scopes = Search.availableScopes(calendar);
+
       this.model = new Model({
         from: month.clone().startOf('month').format('YYYY-MM-DD'),
         to: month.clone().endOf('month').format('YYYY-MM-DD'),
@@ -70,6 +74,7 @@ define('calendar-plus:views/calendar/modals/search', [
         statusList: [],
       });
       this.model.name = 'CalendarEventSearch';
+
       const field = (name, label, Field, params = {}) => ({
         view: new Field({ name, labelText: this.translate(label, 'labels', 'Calendar'), params }),
       });
@@ -91,9 +96,11 @@ define('calendar-plus:views/calendar/modals/search', [
               this.getMetadata().get(['entityDefs', scope, 'fields', 'status', 'options']) || []
             ).includes(status),
           );
+
           return [status, this.getLanguage().translateOption(status, 'status', scope)];
         }),
       );
+
       this.recordView = new Record({
         model: this.model,
         detailLayout: [
@@ -150,7 +157,9 @@ define('calendar-plus:views/calendar/modals/search', [
         {
           onSave: () => {
             if (this.searchRemoved) return;
+
             this.searchOptions = Search.getOptions(this.options.calendar);
+
             if (this.hasSearched) void this.actionSearch();
             else this.renderResults();
           },
@@ -161,16 +170,21 @@ define('calendar-plus:views/calendar/modals/search', [
 
     async actionSearch() {
       if (this.searching) return;
+
       const filters = this.recordView.processFetch();
+
       if (this.recordView.validate()) return;
+
       if (
         !moment(filters.from, 'YYYY-MM-DD', true).isValid() ||
         !moment(filters.to, 'YYYY-MM-DD', true).isValid() ||
         filters.from > filters.to
       ) {
         Espo.Ui.error(this.translate('Invalid search dates', 'messages', 'Calendar'));
+
         return;
       }
+
       this.hasSearched = true;
       this.filters = Espo.Utils.cloneDeep(filters);
       this.results = [];
@@ -182,10 +196,14 @@ define('calendar-plus:views/calendar/modals/search', [
 
     async loadResults() {
       if (this.searching || this.searchRemoved) return;
+
       this.searching = true;
       this.disableButton('search');
+
       const revision = ++this.revision;
+
       this.renderResults(true);
+
       try {
         const size = Search.getPageSize(this.options.calendar);
         const offsets = { ...this.offsets };
@@ -199,7 +217,9 @@ define('calendar-plus:views/calendar/modals/search', [
         }
 
         const response = await Search.searchPage(this.options.calendar, this.filters, offsets);
+
         if (this.searchRemoved || revision !== this.revision) return;
+
         this.appendSearchPage(response, size);
       } catch (error) {
         if (!this.searchRemoved)
@@ -216,6 +236,7 @@ define('calendar-plus:views/calendar/modals/search', [
     appendSearchPage(response, size) {
       this.offsets = { ...this.offsets, ...response.nextOffsets };
       this.errors = [...new Set([...this.errors, ...response.errors])];
+
       const records = new Map(
         [...this.pendingResults, ...response.results].map((record) => [
           `${record.scope}:${record.id}`,
@@ -234,16 +255,24 @@ define('calendar-plus:views/calendar/modals/search', [
 
     renderResults(loading = false) {
       const container = this.el.querySelector('.cp-search-results');
+
       if (!container) return;
+
       container.replaceChildren();
+
       const text = (tag, value, className) => {
         const element = document.createElement(tag);
+
         element.textContent = value;
+
         if (className) element.className = className;
+
         return element;
       };
       const label = (value) => this.translate(value, 'labels', 'Calendar');
+
       container.append(this.createResultsToolbar(loading, text, label));
+
       if (this.errors?.length)
         container.append(
           text(
@@ -252,9 +281,12 @@ define('calendar-plus:views/calendar/modals/search', [
             'text-warning',
           ),
         );
+
       if (!loading && this.hasSearched && !this.results.length)
         container.append(text('p', label('No matching events')));
+
       if (!this.results.length) return;
+
       container.append(
         text(
           'p',
@@ -262,66 +294,86 @@ define('calendar-plus:views/calendar/modals/search', [
           'text-muted cp-search-hint',
         ),
       );
+
       const columns = this.searchOptions.columns;
       const wrapper = text('div', '', 'table-responsive');
       const table = text('table', '', 'table table-striped cp-search-table');
       const head = document.createElement('thead');
       const headings = document.createElement('tr');
+
       headings.append(text('th', label('Event')));
+
       const columnLabels = {
         when: 'When',
         assignedUser: 'Assigned user',
         attendees: 'Attendees',
         status: 'Status',
       };
+
       for (const column of columns) headings.append(text('th', label(columnLabels[column])));
+
       headings.append(text('th', label('Calendar')));
       head.append(headings);
       table.append(head);
+
       const body = document.createElement('tbody');
+
       for (const record of this.results) {
         body.append(this.createResultRow(record, columns, text, label));
       }
+
       table.append(body);
       wrapper.append(table);
       container.append(wrapper);
+
       if (
         this.pendingResults?.length ||
         Object.values(this.offsets).some((offset) => offset !== null)
       ) {
         const more = text('button', label('Load more'), 'btn btn-default');
+
         more.type = 'button';
         more.disabled = loading;
         more.addEventListener('click', () => this.loadResults());
         container.append(more);
       }
     }
+
     resultsSummary(loading, label) {
       if (loading) return label('Searching');
+
       if (!this.hasSearched) return label('Results');
 
       const message = this.results.length === 1 ? 'matching event' : 'matching events';
+
       return `${this.results.length} ${label(message)}`;
     }
 
     createResultsToolbar(loading, text, label) {
       const toolbar = text('div', '', 'cp-search-toolbar');
+
       toolbar.append(text('p', this.resultsSummary(loading, label), 'text-muted'));
+
       const gear = text('button', '', 'btn btn-text btn-icon');
+
       gear.type = 'button';
       gear.title = label('Search result options');
       gear.setAttribute('aria-label', label('Search result options'));
       gear.disabled = loading;
+
       const icon = text('span', '', 'fas fa-cog');
+
       icon.setAttribute('aria-hidden', 'true');
       gear.append(icon);
       gear.addEventListener('click', () => this.actionResultOptions());
       toolbar.append(gear);
+
       return toolbar;
     }
 
     formatResultDate(dateTime, date, dateTimeValue) {
       if (date) return dateTime.toDisplayDate(date);
+
       if (dateTimeValue) return dateTime.toDisplay(dateTimeValue);
 
       return '';
@@ -331,19 +383,25 @@ define('calendar-plus:views/calendar/modals/search', [
       const row = document.createElement('tr');
       const title = document.createElement('td');
       const link = text('a', record.name || label('Untitled event'));
+
       link.href = `#${encodeURIComponent(record.scope)}/view/${encodeURIComponent(record.id)}`;
+
       const badge = text(
         'span',
         this.translate(record.scope, 'scopeNames'),
         'cp-search-type-badge',
       );
       const color = Colors.entityColor(this.options.calendar, record.scope);
+
       badge.style.backgroundColor = color;
       badge.style.color = '#fff';
+
       const type = text('div', '', 'cp-search-event-type');
+
       type.append(badge);
       title.append(link, type);
       row.append(title);
+
       const dateTime = this.getDateTime();
       const start = this.formatResultDate(dateTime, record.dateStartDate, record.dateStart);
       const end = this.formatResultDate(dateTime, record.dateEndDate, record.dateEnd);
@@ -359,6 +417,7 @@ define('calendar-plus:views/calendar/modals/search', [
           ? this.getLanguage().translateOption(record.status, 'status', record.scope)
           : '',
       };
+
       for (const column of columns) {
         const cell = text('td', ['when', 'status'].includes(column) ? '' : values[column]);
 
@@ -368,28 +427,38 @@ define('calendar-plus:views/calendar/modals/search', [
 
         if (column === 'status' && record.status) {
           const style = Search.statusStyle(this.options.calendar, record.scope, record.status);
+
           cell.append(text('span', values.status, `label label-md label-state label-${style}`));
         }
 
         row.append(cell);
       }
+
       const action = document.createElement('td');
       const button = text('button', label('Show in calendar'), 'btn btn-default btn-sm');
+
       button.type = 'button';
+
       const availability = Search.resultAvailability(this.options.calendar, record);
+
       button.disabled = !availability.canShow;
+
       if (!availability.canShow) {
         button.title = this.translate(availability.reason, 'messages', 'Calendar');
         action.title = button.title;
       }
+
       button.addEventListener('click', () => {
         const current = Search.resultAvailability(this.options.calendar, record);
+
         if (!current.canShow) return;
+
         this.options.calendar.showSearchResult({ ...record, calendarUserIds: current.userIds });
         this.close();
       });
       action.append(button);
       row.append(action);
+
       return row;
     }
   };

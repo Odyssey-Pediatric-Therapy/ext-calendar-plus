@@ -30,6 +30,7 @@ class CalendarPreferences implements Validator
     }
 
     $value = $data->get($field);
+
     try {
       if (strlen(json_encode($value, JSON_THROW_ON_ERROR)) > self::MAX_JSON_BYTES) {
         return Failure::create();
@@ -56,6 +57,7 @@ class CalendarPreferences implements Validator
     }
 
     $ids = [];
+
     foreach ($value as $calendar) {
       if (
         !$calendar instanceof stdClass ||
@@ -96,9 +98,11 @@ class CalendarPreferences implements Validator
       if ($value->$field === []) {
         continue;
       }
+
       if (!$value->$field instanceof stdClass) {
         return false;
       }
+
       foreach (get_object_vars($value->$field) as $id => $name) {
         if (!Selection::isId((string) $id) || !is_string($name) || mb_strlen($name) > 255) {
           return false;
@@ -110,6 +114,7 @@ class CalendarPreferences implements Validator
       if (!in_array($value->membershipMode, ['dynamic', 'static'], true)) {
         return false;
       }
+
       if ($value->membershipMode === 'static' && !property_exists($value, 'staticUserIdList')) {
         return false;
       }
@@ -128,23 +133,27 @@ class CalendarPreferences implements Validator
       if ($key === '' || strlen($key) > 150 || !$settings instanceof stdClass) {
         return false;
       }
+
       foreach (self::BOOLEAN_SETTINGS as $field) {
         if (property_exists($settings, $field) && !is_bool($settings->$field)) {
           return false;
         }
       }
+
       if (
         property_exists($settings, 'slotDuration') &&
         !in_array($settings->slotDuration, [5, 10, 15, 30], true)
       ) {
         return false;
       }
+
       if (
         property_exists($settings, 'scrollHour') &&
         (!is_int($settings->scrollHour) || $settings->scrollHour < 0 || $settings->scrollHour > 23)
       ) {
         return false;
       }
+
       foreach ([
         'eventTextSize' => ['small', 'medium', 'large'],
         'dayBoundary' => ['subtle', 'strong', 'black'],
@@ -161,6 +170,7 @@ class CalendarPreferences implements Validator
       $end = $this->time(
         property_exists($settings, 'visibleTimeEnd') ? $settings->visibleTimeEnd : '24:00'
       );
+
       if ($start === null || $end === null || $start >= $end) {
         return false;
       }
@@ -196,12 +206,14 @@ class CalendarPreferences implements Validator
       if (!is_array($value->columns) || !array_is_list($value->columns) || count($value->columns) > 20) {
         return false;
       }
+
       foreach ($value->columns as $column) {
         if (!is_string($column) || $column === '' || strlen($column) > 100) {
           return false;
         }
       }
     }
+
     foreach ([
       'sortBy' => ['date', 'title'],
       'sortOrder' => ['asc', 'desc'],

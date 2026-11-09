@@ -25,6 +25,7 @@ define('calendar-plus:views/calendar/settings-form', [
     defaults(routeMode, parent = {}) {
       const preferences = this.getPreferences();
       const stored = Definitions.viewSettings(preferences, routeMode);
+
       return {
         showInactiveUsers: stored.showInactiveUsers === true,
         showWeekends: stored.showWeekends !== false,
@@ -89,6 +90,7 @@ define('calendar-plus:views/calendar/settings-form', [
 
       const add = (name, label, Field = Bool, params = {}) => {
         this.settingNames.push(name);
+
         const sectionName =
           Object.keys(sectionFields).find((key) => sectionFields[key].includes(name)) || 'display';
         const section = sections.find((item) => item.name === sectionName);
@@ -197,10 +199,15 @@ define('calendar-plus:views/calendar/settings-form', [
     modesForField(name) {
       if (['visibleTimeStart', 'visibleTimeEnd'].includes(name))
         return ['agendaDay', 'agendaWeek', 'timeline'];
+
       if (['slotDuration', 'scrollHour'].includes(name)) return ['agendaDay', 'agendaWeek'];
+
       if (name === 'showGradient') return ['agendaWeek', 'month'];
+
       if (['dayBoundary', 'timelineRowHeight'].includes(name)) return ['timeline'];
+
       if (name === 'rememberHiddenPeople') return ['agendaDay', 'agendaWeek', 'month'];
+
       return ['agendaDay', 'agendaWeek', 'month', 'timeline'];
     }
 
@@ -212,6 +219,7 @@ define('calendar-plus:views/calendar/settings-form', [
       const visible = (modes) => ({
         visible: { conditionGroup: [{ type: 'in', attribute: 'mode', value: modes }] },
       });
+
       return {
         fields: Object.fromEntries(
           this.settingNames.map((name) => [
@@ -227,7 +235,9 @@ define('calendar-plus:views/calendar/settings-form', [
 
     parseValue(name, value) {
       if (['slotDuration', 'scrollHour'].includes(name)) return Number(value);
+
       if (['visibleTimeStart', 'visibleTimeEnd'].includes(name)) return value?.trim();
+
       if (['eventTextSize', 'dayBoundary', 'timelineRowHeight'].includes(name)) return value;
 
       return value === true;
@@ -235,6 +245,7 @@ define('calendar-plus:views/calendar/settings-form', [
 
     values(data, mode) {
       data = { ...this.view.model.attributes, ...data };
+
       const settingNames = this.namesForMode(mode);
       const values = Object.fromEntries(
         settingNames.map((name) => [name, this.parseValue(name, data[name])]),
@@ -267,6 +278,7 @@ define('calendar-plus:views/calendar/settings-form', [
       })) {
         if (settingNames.includes(name) && !options.includes(values[name])) return;
       }
+
       return values;
     }
   };

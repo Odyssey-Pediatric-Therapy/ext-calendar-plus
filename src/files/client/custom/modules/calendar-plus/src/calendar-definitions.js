@@ -82,12 +82,15 @@ define('calendar-plus:calendar-definitions', [], () => {
 
   const normalizeTime = (value) => {
     if (typeof value !== 'string') return null;
+
     value = value.trim();
+
     if (!/^(?:\d{3,4}|\d{1,2}:\d{2})$/.test(value)) return null;
 
     const digits = value.replace(':', '').padStart(4, '0');
     const hour = Number(digits.slice(0, 2));
     const minute = Number(digits.slice(2));
+
     if (hour > 24 || minute > 59 || (hour === 24 && minute !== 0)) return null;
 
     return `${digits.slice(0, 2)}:${digits.slice(2)}`;
@@ -96,6 +99,7 @@ define('calendar-plus:calendar-definitions', [], () => {
   const timeRange = (settings) => {
     const parse = (value) => {
       const time = normalizeTime(value);
+
       return time ? `${time}:00` : null;
     };
 
@@ -111,6 +115,7 @@ define('calendar-plus:calendar-definitions', [], () => {
     if (!element?.dataset) return;
 
     const settings = viewSettings(view.getPreferences(), view.mode || 'timeline');
+
     element.classList.add('cp-calendar-view');
     element.dataset.eventTextSize = ['small', 'large'].includes(settings.eventTextSize)
       ? settings.eventTextSize
@@ -208,10 +213,12 @@ define('calendar-plus:calendar-definitions', [], () => {
         const recordId = props.recordId || event['record-id'];
 
         if (!recordId) continue;
+
         // Reuse permission-checked tooltip details and cache; limit concurrent requests.
 
         const details = await view.eventTooltip.loadDetails({ extendedProps: { scope, recordId } });
         const declined = details?.usersColumns?.[userId]?.status === 'Declined';
+
         keep[position] =
           !declined || settings.showDeclinedEvents !== false || isSearchResult(view, event);
 
@@ -228,12 +235,14 @@ define('calendar-plus:calendar-definitions', [], () => {
 
   const highlightSearchResult = (view) => {
     if (!view.searchResult) return;
+
     let focused = false;
 
     for (const [element, appearance] of view.eventAppearances) {
       const props = appearance.event.extendedProps;
       const match =
         props.scope === view.searchResult.scope && props.recordId === view.searchResult.id;
+
       element.classList.toggle('cp-search-match', match);
 
       if (match && !focused) {

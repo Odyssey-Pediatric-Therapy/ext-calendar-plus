@@ -47,6 +47,7 @@ class UserResolver
     }
 
     $filter = ['type' => self::USER_TYPES];
+
     if (!$includeInactive) {
       $filter['isActive'] = true;
     }
@@ -55,9 +56,11 @@ class UserResolver
     $permissionCache = [];
     $eligible = [];
     $conditions = [];
+
     if ($userIds) {
       $conditions[] = ['id' => $userIds];
     }
+
     if ($teamIds) {
       $conditions[] = ['teams.id' => $teamIds];
     }
@@ -76,6 +79,7 @@ class UserResolver
     }
 
     $users = [];
+
     foreach ($userIds as $id) {
       if (isset($eligible[$id])) {
         $users[$id] = $eligible[$id];
@@ -100,6 +104,7 @@ class UserResolver
     while ($row = $memberships->fetch()) {
       $id = $row['id'];
       $teamId = $row['teamId'];
+
       if (!isset($users[$id]) && isset($teams[$teamId], $eligible[$id])) {
         $teams[$teamId][$id] = $eligible[$id];
       }
@@ -122,6 +127,7 @@ class UserResolver
     }
 
     $id = $user->getId();
+
     if (!array_key_exists($id, $cache)) {
       if (count($cache) >= Selection::MAX_USERS) {
         throw new BadRequest('Calendar selection exceeds 300 users. Select fewer teams or users.');

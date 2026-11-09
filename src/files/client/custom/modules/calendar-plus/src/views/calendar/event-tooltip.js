@@ -17,17 +17,24 @@ define('calendar-plus:views/calendar/event-tooltip', ['calendar-plus:calendar-de
         mouseenter: (event) => {
           if (!event?.sourceCapabilities?.firesTouchEvents) this.scheduleShow(element);
         },
+
         mouseleave: () => this.scheduleHide(element),
+
         focus: () => {
           if (element.matches?.(':focus-visible')) this.scheduleShow(element);
         },
+
         blur: () => this.scheduleHide(element),
+
         pointerdown: () => this.hide(),
+
         click: () => this.hide(),
+
         keydown: (event) => {
           if (event.key === 'Escape') this.hide();
         },
       };
+
       for (const [name, handler] of Object.entries(handlers))
         element.addEventListener(name, handler);
 
@@ -42,6 +49,7 @@ define('calendar-plus:views/calendar/event-tooltip', ['calendar-plus:calendar-de
       for (const [name, handler] of Object.entries(this.bindings.get(element) || {})) {
         element.removeEventListener(name, handler);
       }
+
       this.bindings.delete(element);
     }
 
@@ -52,6 +60,7 @@ define('calendar-plus:views/calendar/event-tooltip', ['calendar-plus:calendar-de
 
     reset() {
       this.refresh();
+
       for (const element of this.bindings.keys()) this.detach(element);
     }
 
@@ -119,6 +128,7 @@ define('calendar-plus:views/calendar/event-tooltip', ['calendar-plus:calendar-de
 
     async show(anchor) {
       this.hide();
+
       const appearance = this.view.eventAppearances.get(anchor);
 
       if (
@@ -136,10 +146,13 @@ define('calendar-plus:views/calendar/event-tooltip', ['calendar-plus:calendar-de
 
       const panel = document.createElement('div');
       const id = `cp-calendar-event-tooltip-${++nextId}`;
+
       panel.id = id;
       panel.className = 'cp-calendar-event-tooltip';
       panel.setAttribute('role', 'tooltip');
+
       const session = { anchor, panel, id, event };
+
       session.onScroll = (e) => {
         if (!panel.contains(e.target)) this.hide();
       };
@@ -153,6 +166,7 @@ define('calendar-plus:views/calendar/event-tooltip', ['calendar-plus:calendar-de
       document.body.append(panel);
       document.addEventListener('scroll', session.onScroll, true);
       this.render(session);
+
       const details = await this.loadDetails(event);
 
       if (this.active !== session) return;
@@ -177,8 +191,10 @@ define('calendar-plus:views/calendar/event-tooltip', ['calendar-plus:calendar-de
         const request = (async () => {
           try {
             const model = await this.view.getModelFactory().create(scope);
+
             model.id = recordId;
             await model.fetch();
+
             const fields = [
               'name',
               'status',
@@ -204,6 +220,7 @@ define('calendar-plus:views/calendar/event-tooltip', ['calendar-plus:calendar-de
             return null;
           }
         })();
+
         this.cache.set(key, request);
       }
 
@@ -212,6 +229,7 @@ define('calendar-plus:views/calendar/event-tooltip', ['calendar-plus:calendar-de
 
     attendanceStatus(rawStatus, supportsStatus) {
       if (!supportsStatus) return null;
+
       if (['Accepted', 'Declined', 'Tentative'].includes(rawStatus)) return rawStatus;
 
       return 'None';
@@ -219,6 +237,7 @@ define('calendar-plus:views/calendar/event-tooltip', ['calendar-plus:calendar-de
 
     attendanceIndicator(status) {
       if (status === 'Accepted') return '✓';
+
       if (status === 'Declined') return '✕';
 
       return status ? '?' : null;
@@ -226,6 +245,7 @@ define('calendar-plus:views/calendar/event-tooltip', ['calendar-plus:calendar-de
 
     attendeesFor(scope, details) {
       const participants = [];
+
       for (const field of ['users', 'contacts', 'leads']) {
         const columns = details[`${field}Columns`] || {};
         const supportsStatus =
@@ -236,6 +256,7 @@ define('calendar-plus:views/calendar/event-tooltip', ['calendar-plus:calendar-de
           Object.values(columns).some(
             (value) => value && typeof value === 'object' && 'status' in value,
           );
+
         for (const [id, name] of Object.entries(details[`${field}Names`] || {})) {
           if (typeof name !== 'string') continue;
 
@@ -245,6 +266,7 @@ define('calendar-plus:views/calendar/event-tooltip', ['calendar-plus:calendar-de
           const statusLabel = status
             ? this.view.translate(status === 'None' ? 'No answer' : status, 'labels', 'Calendar')
             : null;
+
           participants.push({ name, status, indicator, statusLabel });
         }
       }
@@ -283,6 +305,7 @@ define('calendar-plus:views/calendar/event-tooltip', ['calendar-plus:calendar-de
       const end = data.dateEndDate
         ? dateTime.toDisplayDate(data.dateEndDate)
         : dateTime.toDisplay(data.dateEnd);
+
       add(view.translate('dateStart', 'fields', scope), start);
       add(view.translate('dateEnd', 'fields', scope), end);
 
@@ -302,6 +325,7 @@ define('calendar-plus:views/calendar/event-tooltip', ['calendar-plus:calendar-de
       if (settings.tooltipAttendees !== false) {
         if (scope === 'Task') {
           const collaborators = names(data.collaboratorsNames);
+
           add(view.translate('collaborators', 'fields', scope), collaborators.join(', '));
         } else if (details && attendeeFields.some((name) => details[name] !== undefined)) {
           const participants = this.attendeesFor(scope, details);
@@ -311,6 +335,7 @@ define('calendar-plus:views/calendar/event-tooltip', ['calendar-plus:calendar-de
           const value = participants
             .map((person) => [person.name, person.indicator].filter(Boolean).join(' '))
             .join(', ');
+
           add(
             label,
             value || view.translate('None'),
@@ -323,6 +348,7 @@ define('calendar-plus:views/calendar/event-tooltip', ['calendar-plus:calendar-de
                 (view.sharedUsers || view.userList || []).find((user) => user.id === id)?.name,
             )
             .filter(Boolean);
+
           add(view.translate('Calendar users', 'labels', 'Calendar'), people.join(', '));
         }
       }
@@ -348,30 +374,41 @@ define('calendar-plus:views/calendar/event-tooltip', ['calendar-plus:calendar-de
     render(session, details = null) {
       const { title, type, rows } = this.detailsFor(session.event, details);
       const heading = document.createElement('div');
+
       heading.className = 'cp-calendar-event-tooltip-title';
       heading.textContent = title;
+
       const entity = document.createElement('div');
+
       entity.className = 'cp-calendar-event-tooltip-type';
       entity.textContent = type;
+
       const list = document.createElement('dl');
+
       list.className = 'cp-calendar-event-tooltip-details';
+
       for (const row of rows) {
         list.append(...this.renderDetailRow(row));
       }
+
       session.panel.replaceChildren(heading, entity, list);
       this.position(session);
     }
 
     renderDetailRow(row) {
       const term = document.createElement('dt');
+
       term.textContent = row.label;
+
       const description = document.createElement('dd');
 
       if (row.participants?.length) {
         term.className = 'cp-calendar-event-attendee-label';
         description.className = 'cp-calendar-event-attendees';
+
         for (const person of row.participants) {
           const attendee = this.renderAttendee(person);
+
           description.append(attendee);
         }
       } else {
@@ -385,19 +422,24 @@ define('calendar-plus:views/calendar/event-tooltip', ['calendar-plus:calendar-de
 
     renderAttendee(person) {
       const attendee = document.createElement('span');
+
       attendee.className = 'cp-calendar-event-attendee';
+
       const name = document.createElement('span');
+
       name.textContent = person.name;
       attendee.append(name);
 
       if (person.indicator) {
         const indicator = document.createElement('span');
+
         indicator.className = `cp-calendar-attendance-status cp-calendar-attendance-${person.status.toLowerCase()}`;
         indicator.textContent = person.indicator;
         indicator.title = person.statusLabel;
         indicator.setAttribute('aria-label', person.statusLabel);
         attendee.append(indicator);
       }
+
       return attendee;
     }
 
@@ -410,6 +452,7 @@ define('calendar-plus:views/calendar/event-tooltip', ['calendar-plus:calendar-de
       const below = rect.bottom + 8;
       const top =
         below + size.height <= viewport.clientHeight - margin ? below : rect.top - size.height - 8;
+
       panel.style.left = `${Math.max(margin, left)}px`;
       panel.style.top = `${Math.max(margin, Math.min(top, viewport.clientHeight - size.height - margin))}px`;
     }

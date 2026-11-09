@@ -18,6 +18,7 @@ define('calendar-plus:calendar-colors', [], () => {
     const colors =
       stored && typeof stored === 'object' && !Array.isArray(stored) ? { ...stored } : {};
     const used = new Set(Object.values(colors));
+
     for (const user of [...users].sort((a, b) => a.id.localeCompare(b.id))) {
       if (typeof colors[user.id] === 'string') continue;
 
@@ -32,6 +33,7 @@ define('calendar-plus:calendar-colors', [], () => {
       colors[user.id] = color;
       used.add(color);
     }
+
     storage.set('calendarPlus', 'userColors', colors);
 
     return colors;
@@ -41,6 +43,7 @@ define('calendar-plus:calendar-colors', [], () => {
     if (colors?.[id]) return colors[id];
 
     let hash = 0;
+
     for (const char of id) hash = (Math.imul(hash, 31) + char.charCodeAt(0)) | 0;
 
     return `hsl(${((hash % 360) + 360) % 360}, 58%, 36%)`;
@@ -54,10 +57,12 @@ define('calendar-plus:calendar-colors', [], () => {
 
   const contrastText = (color) => {
     const hex = /^#([0-9a-f]{6})$/i.exec(color);
+
     if (!hex) return '#fff';
 
     const channels = [0, 2, 4].map((offset) => {
       const channel = parseInt(hex[1].slice(offset, offset + 2), 16) / 255;
+
       return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
     });
     const luminance = channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
