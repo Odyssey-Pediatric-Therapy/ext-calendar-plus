@@ -194,13 +194,7 @@ define('calendar-plus:views/calendar/calendar', [
     afterRender() {
       // Core concatenates minutes into HH:mm:ss; FullCalendar requires two minute digits.
       const stored = Definitions.viewSettings(this.getPreferences(), this.mode);
-      this.slotDuration = this.baseSlotDuration ?? this.slotDuration;
-      this.scrollHour = this.baseScrollHour ?? this.scrollHour;
-
-      if ([5, 10, 15, 30].includes(stored.slotDuration)) this.slotDuration = stored.slotDuration;
-
-      if (Number.isInteger(stored.scrollHour) && stored.scrollHour >= 0 && stored.scrollHour <= 23)
-        this.scrollHour = stored.scrollHour;
+      this.restoreTimePreferences(stored);
 
       const minutes = this.slotDuration;
       this.slotDuration = String(minutes).padStart(2, '0');
@@ -214,6 +208,21 @@ define('calendar-plus:views/calendar/calendar', [
       } finally {
         this.slotDuration = minutes;
       }
+    }
+
+    restoreTimePreferences(settings) {
+      this.slotDuration = this.baseSlotDuration ?? this.slotDuration;
+      this.scrollHour = this.baseScrollHour ?? this.scrollHour;
+
+      if ([5, 10, 15, 30].includes(settings.slotDuration))
+        this.slotDuration = settings.slotDuration;
+
+      if (
+        Number.isInteger(settings.scrollHour) &&
+        settings.scrollHour >= 0 &&
+        settings.scrollHour <= 23
+      )
+        this.scrollHour = settings.scrollHour;
     }
 
     applyViewSettings(scroll = false) {
@@ -238,18 +247,7 @@ define('calendar-plus:views/calendar/calendar', [
 
       this.viewSettingsCalendar = this.calendar;
       this.viewSettingsSignature = signature;
-      this.slotDuration = this.baseSlotDuration ?? this.slotDuration;
-      this.scrollHour = this.baseScrollHour ?? this.scrollHour;
-
-      if ([5, 10, 15, 30].includes(settings.slotDuration))
-        this.slotDuration = settings.slotDuration;
-
-      if (
-        Number.isInteger(settings.scrollHour) &&
-        settings.scrollHour >= 0 &&
-        settings.scrollHour <= 23
-      )
-        this.scrollHour = settings.scrollHour;
+      this.restoreTimePreferences(settings);
 
       const range = (!this.searchResult && Definitions.timeRange(settings)) || {
         start: '00:00:00',
@@ -471,35 +469,7 @@ define('calendar-plus:views/calendar/calendar', [
 
         if (!current()) return;
 
-        const allowedIds = new Set(users.map((user) => user.id));
-        const merged = new Map();
-        for (const event of data) {
-          const key = `${event.scope}-${event.id}`;
-          const previous = merged.get(key);
-          const ids = [
-            ...new Set([
-              ...(previous?.userIdList || []),
-              ...(event.userIdList || []),
-              ...(event.userId ? [event.userId] : []),
-            ]),
-          ];
-          merged.set(key, { ...event, userIdList: ids });
-        }
-        const records = [...merged.values()];
-        const events = this.convertToFcEvents(records)
-          .map((event, index) => {
-            const ids = records[index].userIdList.filter((id) => allowedIds.has(id)).sort();
-
-            return {
-              ...event,
-              calendarUserIds: ids,
-              color: this.colorForEvent(event, ids[0]),
-              textColor: '#fff',
-            };
-          })
-          .filter(
-            (event) => event.calendarUserIds.length || event.display === 'inverse-background',
-          );
+        const events = this.convertSharedEvents(data, users);
         const filtered = await Definitions.filterEvents(this, this.includeSearchResult(events));
 
         if (!current()) return;
@@ -523,6 +493,36 @@ define('calendar-plus:views/calendar/calendar', [
         this.syncSharedLayout();
         Espo.Ui.error(this.translate('Could not load shared calendar', 'messages', 'Calendar'));
       }
+    }
+
+    convertSharedEvents(data, users) {
+      const allowedIds = new Set(users.map((user) => user.id));
+      const merged = new Map();
+      for (const event of data) {
+        const key = `${event.scope}-${event.id}`;
+        const previous = merged.get(key);
+        const ids = [
+          ...new Set([
+            ...(previous?.userIdList || []),
+            ...(event.userIdList || []),
+            ...(event.userId ? [event.userId] : []),
+          ]),
+        ];
+        merged.set(key, { ...event, userIdList: ids });
+      }
+      const records = [...merged.values()];
+      return this.convertToFcEvents(records)
+        .map((event, index) => {
+          const ids = records[index].userIdList.filter((id) => allowedIds.has(id)).sort();
+
+          return {
+            ...event,
+            calendarUserIds: ids,
+            color: this.colorForEvent(event, ids[0]),
+            textColor: '#fff',
+          };
+        })
+        .filter((event) => event.calendarUserIds.length || event.display === 'inverse-background');
     }
 
     updateDate() {
@@ -776,6 +776,34 @@ define('calendar-plus:views/calendar/calendar', [
       style.textContent =
         '.cp-person-event-dimmed {opacity:.18 !important;} .cp-person-event-highlighted {outline:2px solid var(--text-color, #222);outline-offset:2px;} .cp-person-toggle:focus-visible {outline:2px solid var(--text-color, #222);outline-offset:2px;}';
       this.legendElement.append(style);
+      const toggle = this.createLegendToggle();
+      const items = document.createElement('div');
+      items.className = 'dropdown-menu cp-person-legend-items';
+      items.setAttribute('role', 'group');
+      items.setAttribute('aria-label', this.translate('Calendar users', 'labels', 'Calendar'));
+      this.legendElement.append(toggle, items);
+      this.legendItems = items;
+      this.legendButtons = new Map();
+      this.hoveredUserId = null;
+      this.focusedUserId = null;
+      for (const user of this.sharedUsers) {
+        const { button, status } = this.createPersonToggle(user);
+        this.legendButtons.set(user.id, { button, status });
+        items.append(button);
+      }
+
+      this.appendLegendActions(items);
+
+      this.refreshLegendState();
+      this.updatePersonHighlight();
+      this.updateLegendLayout();
+      if (!this.legendResizeObserver && typeof ResizeObserver !== 'undefined') {
+        this.legendResizeObserver = new ResizeObserver(() => this.updateLegendLayout());
+        this.legendResizeObserver.observe(this.legendElement);
+      }
+    }
+
+    createLegendToggle() {
       const toggle = document.createElement('button');
       toggle.type = 'button';
       toggle.className = 'btn btn-default dropdown-toggle cp-person-legend-toggle';
@@ -793,49 +821,43 @@ define('calendar-plus:views/calendar/calendar', [
         document.createTextNode(this.translate('Calendar users', 'labels', 'Calendar')),
         caret,
       );
-      const items = document.createElement('div');
-      items.className = 'dropdown-menu cp-person-legend-items';
-      items.setAttribute('role', 'group');
-      items.setAttribute('aria-label', this.translate('Calendar users', 'labels', 'Calendar'));
-      this.legendElement.append(toggle, items);
-      this.legendItems = items;
-      this.legendButtons = new Map();
-      this.hoveredUserId = null;
-      this.focusedUserId = null;
-      for (const user of this.sharedUsers) {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'btn btn-default btn-sm cp-person-toggle';
-        button.style.cssText = 'display:inline-flex;align-items:center;gap:6px;';
-        const status = document.createElement('span');
-        status.setAttribute('aria-hidden', 'true');
-        const badge = this.colorSwatch(user.id);
-        badge.setAttribute('aria-hidden', 'true');
-        button.append(badge, document.createTextNode(user.name), status);
-        button.addEventListener('click', (event) => {
-          event?.stopPropagation();
-          if (!this.personDropDrag) this.setPersonVisible(user.id, this.hiddenUserIds.has(user.id));
-        });
-        button.addEventListener('mouseenter', () => {
-          this.hoveredUserId = user.id;
-          this.updatePersonHighlight();
-        });
-        button.addEventListener('mouseleave', () => {
-          this.hoveredUserId = null;
-          this.updatePersonHighlight();
-        });
-        button.addEventListener('focus', () => {
-          this.focusedUserId = user.id;
-          this.updatePersonHighlight();
-        });
-        button.addEventListener('blur', () => {
-          this.focusedUserId = null;
-          this.updatePersonHighlight();
-        });
-        this.legendButtons.set(user.id, { button, status });
-        items.append(button);
-      }
+      return toggle;
+    }
 
+    createPersonToggle(user) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'btn btn-default btn-sm cp-person-toggle';
+      button.style.cssText = 'display:inline-flex;align-items:center;gap:6px;';
+      const status = document.createElement('span');
+      status.setAttribute('aria-hidden', 'true');
+      const badge = this.colorSwatch(user.id);
+      badge.setAttribute('aria-hidden', 'true');
+      button.append(badge, document.createTextNode(user.name), status);
+      button.addEventListener('click', (event) => {
+        event?.stopPropagation();
+        if (!this.personDropDrag) this.setPersonVisible(user.id, this.hiddenUserIds.has(user.id));
+      });
+      button.addEventListener('mouseenter', () => {
+        this.hoveredUserId = user.id;
+        this.updatePersonHighlight();
+      });
+      button.addEventListener('mouseleave', () => {
+        this.hoveredUserId = null;
+        this.updatePersonHighlight();
+      });
+      button.addEventListener('focus', () => {
+        this.focusedUserId = user.id;
+        this.updatePersonHighlight();
+      });
+      button.addEventListener('blur', () => {
+        this.focusedUserId = null;
+        this.updatePersonHighlight();
+      });
+      return { button, status };
+    }
+
+    appendLegendActions(items) {
       if (this.sharedUsers.length) {
         for (const [label, visible] of [
           ['Show all people', true],
@@ -855,14 +877,6 @@ define('calendar-plus:views/calendar/calendar', [
         const empty = document.createElement('span');
         empty.textContent = this.translate('No calendar users', 'messages', 'Calendar');
         items.append(empty);
-      }
-
-      this.refreshLegendState();
-      this.updatePersonHighlight();
-      this.updateLegendLayout();
-      if (!this.legendResizeObserver && typeof ResizeObserver !== 'undefined') {
-        this.legendResizeObserver = new ResizeObserver(() => this.updateLegendLayout());
-        this.legendResizeObserver.observe(this.legendElement);
       }
     }
 
@@ -1205,21 +1219,7 @@ define('calendar-plus:views/calendar/calendar', [
 
       try {
         const fieldName = this.personDropField(scope);
-        const field = this.getMetadata().get(['entityDefs', scope, 'fields', fieldName]);
-
-        if (
-          !field ||
-          field.readOnly ||
-          field.readOnlyAfterCreate ||
-          field.disabled ||
-          !this.getAcl().checkField(scope, fieldName, 'edit')
-        ) {
-          throw new Error('The participant or assignment field is not editable.');
-        }
-
-        if (fieldName !== 'assignedUser' && !this.getAcl().checkField(scope, fieldName, 'read')) {
-          throw new Error('The current participant list is not readable.');
-        }
+        this.assertPersonFieldEditable(scope, fieldName);
 
         const model = await this.getModelFactory().create(scope);
         model.id = recordId;
@@ -1228,29 +1228,8 @@ define('calendar-plus:views/calendar/calendar', [
         if (!this.getAcl().checkModel(model, 'edit')) throw new Error('Event is not editable.');
 
         const dates = moveTime ? this.movedEventDates(event, originalEvent) : {};
-        for (const name of Object.keys(dates)) {
-          const fieldName = name.endsWith('Date') ? name.slice(0, -4) : name;
-          const dateField = this.getMetadata().get(['entityDefs', scope, 'fields', fieldName]);
-
-          if (dateField?.readOnly || !this.getAcl().checkField(scope, fieldName, 'edit')) {
-            throw new Error('Dates are not editable.');
-          }
-        }
-        const attributes = { ...dates };
-
-        if (fieldName !== 'assignedUser') {
-          const attribute = `${fieldName}Ids`;
-          const participantIds = model.get(attribute);
-
-          if (!Array.isArray(participantIds))
-            throw new Error('The current participant list is unavailable.');
-          // Append only: preserve all existing participants, response statuses, and ownership.
-
-          if (!participantIds.includes(userId))
-            attributes[attribute] = [...new Set([...participantIds, userId])];
-        } else if (model.get('assignedUserId') !== userId) {
-          attributes.assignedUserId = userId;
-        }
+        this.assertDropDatesEditable(scope, dates);
+        const attributes = this.personDropAttributes(model, fieldName, userId, dates);
 
         if (Object.keys(attributes).length) {
           Espo.Ui.notify(this.translate('saving', 'messages'));
@@ -1283,6 +1262,54 @@ define('calendar-plus:views/calendar/calendar', [
       } finally {
         this.pendingPersonDrops.delete(key);
       }
+    }
+
+    assertPersonFieldEditable(scope, fieldName) {
+      const field = this.getMetadata().get(['entityDefs', scope, 'fields', fieldName]);
+
+      if (
+        !field ||
+        field.readOnly ||
+        field.readOnlyAfterCreate ||
+        field.disabled ||
+        !this.getAcl().checkField(scope, fieldName, 'edit')
+      ) {
+        throw new Error('The participant or assignment field is not editable.');
+      }
+
+      if (fieldName !== 'assignedUser' && !this.getAcl().checkField(scope, fieldName, 'read')) {
+        throw new Error('The current participant list is not readable.');
+      }
+    }
+
+    assertDropDatesEditable(scope, dates) {
+      for (const name of Object.keys(dates)) {
+        const fieldName = name.endsWith('Date') ? name.slice(0, -4) : name;
+        const dateField = this.getMetadata().get(['entityDefs', scope, 'fields', fieldName]);
+
+        if (dateField?.readOnly || !this.getAcl().checkField(scope, fieldName, 'edit')) {
+          throw new Error('Dates are not editable.');
+        }
+      }
+    }
+
+    personDropAttributes(model, fieldName, userId, dates) {
+      const attributes = { ...dates };
+
+      if (fieldName !== 'assignedUser') {
+        const attribute = `${fieldName}Ids`;
+        const participantIds = model.get(attribute);
+
+        if (!Array.isArray(participantIds))
+          throw new Error('The current participant list is unavailable.');
+        // Append only: preserve all existing participants, response statuses, and ownership.
+
+        if (!participantIds.includes(userId))
+          attributes[attribute] = [...new Set([...participantIds, userId])];
+      } else if (model.get('assignedUserId') !== userId) {
+        attributes.assignedUserId = userId;
+      }
+      return attributes;
     }
 
     syncColumnScroll(scrollTop) {

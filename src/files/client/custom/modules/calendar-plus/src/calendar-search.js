@@ -71,6 +71,54 @@ define('calendar-plus:calendar-search', ['moment', 'calendar-plus:calendar-visib
       return view.getAcl().checkScope(scope, 'read') && (fields.dateStart || fields.dateEnd);
     });
 
+  const condition = (type, attribute, value) => ({
+    type,
+    attribute,
+    ...(value === undefined ? {} : { value }),
+  });
+  const interval = (start, end, lower, upper) => ({
+    type: 'and',
+    value: [
+      {
+        type: 'or',
+        value: [
+          condition('lessThan', start, upper),
+          { type: 'and', value: [condition('isNull', start), condition('lessThan', end, upper)] },
+        ],
+      },
+      {
+        type: 'or',
+        value: [
+          condition('greaterThanOrEquals', end, lower),
+          {
+            type: 'and',
+            value: [condition('isNull', end), condition('greaterThanOrEquals', start, lower)],
+          },
+        ],
+      },
+    ],
+  });
+
+  const selectFields = (fields, links) => {
+    const select = [
+      'id',
+      'name',
+      'dateStart',
+      'dateEnd',
+      'dateStartDate',
+      'dateEndDate',
+      'status',
+    ].filter((name) => ['id', 'name'].includes(name) || fields[name]);
+
+    if (fields.assignedUser || links.assignedUser)
+      select.push('assignedUserId', 'assignedUserName');
+
+    for (const relationship of ['assignedUsers', 'users', 'contacts', 'leads', 'collaborators']) {
+      if (fields[relationship]) select.push(`${relationship}Ids`, `${relationship}Names`);
+    }
+    return select;
+  };
+
   const buildQuery = (view, scope, filters, offset = 0) => {
     const fields = view.getMetadata().get(['entityDefs', scope, 'fields']) || {};
     const links = view.getMetadata().get(['entityDefs', scope, 'links']) || {};
@@ -78,33 +126,6 @@ define('calendar-plus:calendar-search', ['moment', 'calendar-plus:calendar-visib
     const from = moment.tz(filters.from, timeZone).startOf('day');
     const to = moment.tz(filters.to, timeZone).add(1, 'day').startOf('day');
     const where = [];
-    const condition = (type, attribute, value) => ({
-      type,
-      attribute,
-      ...(value === undefined ? {} : { value }),
-    });
-    const interval = (start, end, lower, upper) => ({
-      type: 'and',
-      value: [
-        {
-          type: 'or',
-          value: [
-            condition('lessThan', start, upper),
-            { type: 'and', value: [condition('isNull', start), condition('lessThan', end, upper)] },
-          ],
-        },
-        {
-          type: 'or',
-          value: [
-            condition('greaterThanOrEquals', end, lower),
-            {
-              type: 'and',
-              value: [condition('isNull', end), condition('greaterThanOrEquals', start, lower)],
-            },
-          ],
-        },
-      ],
-    });
     const dateRanges = [];
 
     if (fields.dateStart && fields.dateEnd) {
@@ -179,22 +200,7 @@ define('calendar-plus:calendar-search', ['moment', 'calendar-plus:calendar-visib
       where.push(condition('in', 'status', statuses));
     }
 
-    const select = [
-      'id',
-      'name',
-      'dateStart',
-      'dateEnd',
-      'dateStartDate',
-      'dateEndDate',
-      'status',
-    ].filter((name) => ['id', 'name'].includes(name) || fields[name]);
-
-    if (fields.assignedUser || links.assignedUser)
-      select.push('assignedUserId', 'assignedUserName');
-
-    for (const relationship of ['assignedUsers', 'users', 'contacts', 'leads', 'collaborators']) {
-      if (fields[relationship]) select.push(`${relationship}Ids`, `${relationship}Names`);
-    }
+    const select = selectFields(fields, links);
 
     const options = getOptions(view);
 
@@ -207,6 +213,14 @@ define('calendar-plus:calendar-search', ['moment', 'calendar-plus:calendar-visib
       order: options.sortDirection,
     };
   };
+
+  const nextOffset = (response, query, offset) =>
+    response.list.length === query.maxSize &&
+    (response.total === -1 ||
+      response.total == null ||
+      offset + response.list.length < response.total)
+      ? offset + response.list.length
+      : null;
 
   const searchPage = async (view, filters, offsets = {}) => {
     const permitted = availableScopes(view);
@@ -230,13 +244,7 @@ define('calendar-plus:calendar-search', ['moment', 'calendar-plus:calendar-visib
           const response = await Espo.Ajax.getRequest(scope, query);
           if (!Array.isArray(response.list)) throw new Error('Invalid search response');
           results.push(...response.list.map((record) => ({ ...record, scope })));
-          nextOffsets[scope] =
-            response.list.length === query.maxSize &&
-            (response.total === -1 ||
-              response.total == null ||
-              offset + response.list.length < response.total)
-              ? offset + response.list.length
-              : null;
+          nextOffsets[scope] = nextOffset(response, query, offset);
         } catch (error) {
           errors.push(scope);
           nextOffsets[scope] = null;

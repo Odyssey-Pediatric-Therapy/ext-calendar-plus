@@ -210,6 +210,20 @@ define('calendar-plus:views/calendar/event-tooltip', ['calendar-plus:calendar-de
       return this.cache.get(key);
     }
 
+    attendanceStatus(rawStatus, supportsStatus) {
+      if (!supportsStatus) return null;
+      if (['Accepted', 'Declined', 'Tentative'].includes(rawStatus)) return rawStatus;
+
+      return 'None';
+    }
+
+    attendanceIndicator(status) {
+      if (status === 'Accepted') return '✓';
+      if (status === 'Declined') return '✕';
+
+      return status ? '?' : null;
+    }
+
     attendeesFor(scope, details) {
       const participants = [];
       for (const field of ['users', 'contacts', 'leads']) {
@@ -226,13 +240,8 @@ define('calendar-plus:views/calendar/event-tooltip', ['calendar-plus:calendar-de
           if (typeof name !== 'string') continue;
 
           const rawStatus = columns[id]?.status;
-          const status = supportsStatus
-            ? ['Accepted', 'Declined', 'Tentative'].includes(rawStatus)
-              ? rawStatus
-              : 'None'
-            : null;
-          const indicator =
-            status === 'Accepted' ? '✓' : status === 'Declined' ? '✕' : status ? '?' : null;
+          const status = this.attendanceStatus(rawStatus, supportsStatus);
+          const indicator = this.attendanceIndicator(status);
           const statusLabel = status
             ? this.view.translate(status === 'None' ? 'No answer' : status, 'labels', 'Calendar')
             : null;
@@ -347,41 +356,49 @@ define('calendar-plus:views/calendar/event-tooltip', ['calendar-plus:calendar-de
       const list = document.createElement('dl');
       list.className = 'cp-calendar-event-tooltip-details';
       for (const row of rows) {
-        const term = document.createElement('dt');
-        term.textContent = row.label;
-        const description = document.createElement('dd');
-
-        if (row.participants?.length) {
-          term.className = 'cp-calendar-event-attendee-label';
-          description.className = 'cp-calendar-event-attendees';
-          for (const person of row.participants) {
-            const attendee = document.createElement('span');
-            attendee.className = 'cp-calendar-event-attendee';
-            const name = document.createElement('span');
-            name.textContent = person.name;
-            attendee.append(name);
-
-            if (person.indicator) {
-              const indicator = document.createElement('span');
-              indicator.className = `cp-calendar-attendance-status cp-calendar-attendance-${person.status.toLowerCase()}`;
-              indicator.textContent = person.indicator;
-              indicator.title = person.statusLabel;
-              indicator.setAttribute('aria-label', person.statusLabel);
-              attendee.append(indicator);
-            }
-
-            description.append(attendee);
-          }
-        } else {
-          if (row.kind === 'status') description.className = 'cp-calendar-event-status';
-
-          description.textContent = row.value;
-        }
-
-        list.append(term, description);
+        list.append(...this.renderDetailRow(row));
       }
       session.panel.replaceChildren(heading, entity, list);
       this.position(session);
+    }
+
+    renderDetailRow(row) {
+      const term = document.createElement('dt');
+      term.textContent = row.label;
+      const description = document.createElement('dd');
+
+      if (row.participants?.length) {
+        term.className = 'cp-calendar-event-attendee-label';
+        description.className = 'cp-calendar-event-attendees';
+        for (const person of row.participants) {
+          const attendee = this.renderAttendee(person);
+          description.append(attendee);
+        }
+      } else {
+        if (row.kind === 'status') description.className = 'cp-calendar-event-status';
+
+        description.textContent = row.value;
+      }
+
+      return [term, description];
+    }
+
+    renderAttendee(person) {
+      const attendee = document.createElement('span');
+      attendee.className = 'cp-calendar-event-attendee';
+      const name = document.createElement('span');
+      name.textContent = person.name;
+      attendee.append(name);
+
+      if (person.indicator) {
+        const indicator = document.createElement('span');
+        indicator.className = `cp-calendar-attendance-status cp-calendar-attendance-${person.status.toLowerCase()}`;
+        indicator.textContent = person.indicator;
+        indicator.title = person.statusLabel;
+        indicator.setAttribute('aria-label', person.statusLabel);
+        attendee.append(indicator);
+      }
+      return attendee;
     }
 
     position({ panel, anchor }) {

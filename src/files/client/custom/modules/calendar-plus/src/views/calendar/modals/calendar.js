@@ -67,6 +67,21 @@ define('calendar-plus:views/calendar/modals/calendar', [
         }),
       );
       this.model.name = 'CalendarView';
+      const rows = this.calendarRows(membershipOnly, settingsOnly);
+      const settingsLayout = this.settingsForm.layout(
+        this.model.attributes.mode,
+        !settingsOnly,
+        !settingsOnly && !membershipOnly,
+      );
+      this.recordView = new Record({
+        model: this.model,
+        detailLayout: [...(rows.length ? [{ rows }] : []), ...settingsLayout],
+        dynamicLogicDefs: this.settingsForm.dynamicLogicDefs(),
+      });
+      this.assignView('record', this.recordView);
+    }
+
+    calendarRows(membershipOnly, settingsOnly) {
       const rows = [];
 
       if (!membershipOnly && !settingsOnly) {
@@ -127,17 +142,15 @@ define('calendar-plus:views/calendar/modals/calendar', [
             false,
           ],
         );
-      const settingsLayout = this.settingsForm.layout(
-        this.model.attributes.mode,
-        !settingsOnly,
-        !settingsOnly && !membershipOnly,
-      );
-      this.recordView = new Record({
-        model: this.model,
-        detailLayout: [...(rows.length ? [{ rows }] : []), ...settingsLayout],
-        dynamicLogicDefs: this.settingsForm.dynamicLogicDefs(),
-      });
-      this.assignView('record', this.recordView);
+      return rows;
+    }
+
+    modeForSave(data) {
+      const calendar = this.options.calendar;
+      if (calendar?.source === 'shared') return 'timeline';
+      if (calendar?.source === 'personal') return calendar.mode;
+
+      return data.mode;
     }
 
     async actionSave() {
@@ -148,11 +161,7 @@ define('calendar-plus:views/calendar/modals/calendar', [
       if (!data || this.recordView.validate()) return;
 
       const membershipOnly = this.options.calendar?.source === 'shared';
-      const mode = membershipOnly
-        ? 'timeline'
-        : this.options.calendar?.source === 'personal'
-          ? this.options.calendar.mode
-          : data.mode;
+      const mode = this.modeForSave(data);
       this.settingValues = this.settingsForm.values(data, mode);
       if (!this.settingValues) return;
 
@@ -197,16 +206,7 @@ define('calendar-plus:views/calendar/modals/calendar', [
 
           if (this.calendarEditorRemoved) return;
 
-          if (
-            !Array.isArray(users) ||
-            users.some(
-              (user) => !user || typeof user.id !== 'string' || !user.id || user.id.length > 100,
-            )
-          ) {
-            throw new Error('Invalid member response.');
-          }
-
-          item.staticUserIdList = [...new Set(users.map((user) => user.id))];
+          item.staticUserIdList = this.staticUserIds(users);
 
           if (item.staticUserIdList.length > 500) {
             Espo.Ui.error(this.translate('Static Calendar Member Limit', 'messages', 'Calendar'));
@@ -227,6 +227,19 @@ define('calendar-plus:views/calendar/modals/calendar', [
       } finally {
         this.saving = false;
       }
+    }
+
+    staticUserIds(users) {
+      if (
+        !Array.isArray(users) ||
+        users.some(
+          (user) => !user || typeof user.id !== 'string' || !user.id || user.id.length > 100,
+        )
+      ) {
+        throw new Error('Invalid member response.');
+      }
+
+      return [...new Set(users.map((user) => user.id))];
     }
 
     async actionRemove() {

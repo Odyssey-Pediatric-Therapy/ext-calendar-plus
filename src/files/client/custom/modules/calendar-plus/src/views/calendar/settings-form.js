@@ -176,18 +176,22 @@ define('calendar-plus:views/calendar/settings-form', [
         .map((section) => ({
           name: section.name,
           label: this.translate(section.label, 'labels', 'Calendar'),
-          rows: section.rows.reduce((rows, [field], index) => {
-            // Keep the tooltip switch separate from its two-column detail options.
-            const columnIndex = section.name === 'tooltips' ? index - 1 : index;
-
-            if (columnIndex < 0 || columnIndex % 2 === 0) rows.push([field, false]);
-            else rows[rows.length - 1][1] = field;
-
-            return rows;
-          }, []),
+          rows: this.sectionRows(section),
         }));
 
       return detailLayout;
+    }
+
+    sectionRows(section) {
+      return section.rows.reduce((rows, [field], index) => {
+        // Keep the tooltip switch separate from its two-column detail options.
+        const columnIndex = section.name === 'tooltips' ? index - 1 : index;
+
+        if (columnIndex < 0 || columnIndex % 2 === 0) rows.push([field, false]);
+        else rows[rows.length - 1][1] = field;
+
+        return rows;
+      }, []);
     }
 
     modesForField(name) {
@@ -221,20 +225,19 @@ define('calendar-plus:views/calendar/settings-form', [
       };
     }
 
+    parseValue(name, value) {
+      if (['slotDuration', 'scrollHour'].includes(name)) return Number(value);
+      if (['visibleTimeStart', 'visibleTimeEnd'].includes(name)) return value?.trim();
+      if (['eventTextSize', 'dayBoundary', 'timelineRowHeight'].includes(name)) return value;
+
+      return value === true;
+    }
+
     values(data, mode) {
       data = { ...this.view.model.attributes, ...data };
       const settingNames = this.namesForMode(mode);
       const values = Object.fromEntries(
-        settingNames.map((name) => [
-          name,
-          ['slotDuration', 'scrollHour'].includes(name)
-            ? Number(data[name])
-            : ['visibleTimeStart', 'visibleTimeEnd'].includes(name)
-              ? data[name]?.trim()
-              : ['eventTextSize', 'dayBoundary', 'timelineRowHeight'].includes(name)
-                ? data[name]
-                : data[name] === true,
-        ]),
+        settingNames.map((name) => [name, this.parseValue(name, data[name])]),
       );
 
       if (

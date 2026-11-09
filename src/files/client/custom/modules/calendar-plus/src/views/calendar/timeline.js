@@ -83,6 +83,17 @@ define('calendar-plus:views/calendar/timeline', [
       )
         return;
 
+      const hiddenDates = this.hiddenDatesForRange(showWeekends, range);
+
+      const apply = hiddenDates.length || this.timelineHasHiddenDates;
+      this.settingsTimeline = this.timeline;
+      this.timelineSettingsSignature = signature;
+      this.timelineHasHiddenDates = !!hiddenDates.length;
+
+      if (apply) this.timeline.setOptions({ hiddenDates });
+    }
+
+    hiddenDatesForRange(showWeekends, range) {
       const hiddenDates = [];
 
       if (!showWeekends)
@@ -101,13 +112,7 @@ define('calendar-plus:views/calendar/timeline', [
         end.setHours(Number(range.start.slice(0, 2)), Number(range.start.slice(3, 5)), 0, 0);
         hiddenDates.push({ start, end, repeat: 'daily' });
       }
-
-      const apply = hiddenDates.length || this.timelineHasHiddenDates;
-      this.settingsTimeline = this.timeline;
-      this.timelineSettingsSignature = signature;
-      this.timelineHasHiddenDates = !!hiddenDates.length;
-
-      if (apply) this.timeline.setOptions({ hiddenDates });
+      return hiddenDates;
     }
 
     actionSearchCalendar() {
@@ -348,6 +353,35 @@ define('calendar-plus:views/calendar/timeline', [
       return super.runFetch();
     }
 
+    applyTimelineEventLayout(events) {
+      if (this.timeline) {
+        this.applyViewSettings();
+        const isNew = this.tooltipTimeline !== this.timeline;
+        const configuredGap = this.getConfig().get('calendarPlusTimelineEventGap');
+        const spacing = Definitions.viewSettings(
+          this.getPreferences(),
+          this.mode || 'timeline',
+        ).timelineRowHeight;
+        const vertical = spacing === 'compact' ? 4 : spacing === 'spacious' ? 22 : 12;
+        const gap = Number.isFinite(configuredGap)
+          ? Math.max(0, Math.min(100, Math.round(configuredGap)))
+          : 0;
+
+        if (isNew || gap !== this.timelineEventGap || vertical !== this.timelineVerticalGap) {
+          this.timelineEventGap = gap;
+          this.timelineVerticalGap = vertical;
+          this.timeline.setOptions({ margin: { item: { horizontal: gap, vertical }, axis: 6 } });
+          // Margin changes alone do not invalidate vis's existing row assignments.
+          this.timeline.setItems(events);
+        }
+
+        if (isNew) {
+          this.tooltipTimeline = this.timeline;
+          this.timeline.on('changed', () => this.syncTimelineTooltips());
+        }
+      }
+    }
+
     async fetchEvents(from, to, callback) {
       this.eventTooltip.refresh();
       this.tooltipEvents.clear();
@@ -363,32 +397,7 @@ define('calendar-plus:views/calendar/timeline', [
 
         callback(events);
 
-        if (this.timeline) {
-          this.applyViewSettings();
-          const isNew = this.tooltipTimeline !== this.timeline;
-          const configuredGap = this.getConfig().get('calendarPlusTimelineEventGap');
-          const spacing = Definitions.viewSettings(
-            this.getPreferences(),
-            this.mode || 'timeline',
-          ).timelineRowHeight;
-          const vertical = spacing === 'compact' ? 4 : spacing === 'spacious' ? 22 : 12;
-          const gap = Number.isFinite(configuredGap)
-            ? Math.max(0, Math.min(100, Math.round(configuredGap)))
-            : 0;
-
-          if (isNew || gap !== this.timelineEventGap || vertical !== this.timelineVerticalGap) {
-            this.timelineEventGap = gap;
-            this.timelineVerticalGap = vertical;
-            this.timeline.setOptions({ margin: { item: { horizontal: gap, vertical }, axis: 6 } });
-            // Margin changes alone do not invalidate vis's existing row assignments.
-            this.timeline.setItems(events);
-          }
-
-          if (isNew) {
-            this.tooltipTimeline = this.timeline;
-            this.timeline.on('changed', () => this.syncTimelineTooltips());
-          }
-        }
+        this.applyTimelineEventLayout(events);
 
         this.syncTimelineTooltips();
         this.$el

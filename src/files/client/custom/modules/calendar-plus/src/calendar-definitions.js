@@ -152,24 +152,34 @@ define('calendar-plus:calendar-definitions', [], () => {
     );
   };
 
+  const matchesStatusSettings = (view, event, settings) => {
+    if (event.type === 'background' || event.display === 'inverse-background') return true;
+
+    if (isSearchResult(view, event)) return true;
+
+    const props = event.extendedProps || event;
+    const canceled = view.getEventTypeCanceledStatusList?.(props.scope) || [];
+    const completed = view.getEventTypeCompletedStatusList?.(props.scope) || [];
+
+    return !(
+      (settings.showCanceledEvents === false && canceled.includes(props.status)) ||
+      (settings.showCompletedEvents === false && completed.includes(props.status))
+    );
+  };
+
+  const markDeclinedEvent = (view, event, props) => {
+    props.isDeclined = true;
+    event.className = Array.isArray(event.className)
+      ? [...new Set([...event.className, 'cp-event-declined'])]
+      : [...new Set(`${event.className || ''} cp-event-declined`.trim().split(/\s+/))].join(' ');
+    view.styleDeclinedEvent?.(event);
+  };
+
   const filterEvents = async (view, events) => {
     const settings = viewSettings(view.getPreferences(), view.mode || 'timeline');
 
     if (settings.showCanceledEvents === false || settings.showCompletedEvents === false) {
-      events = events.filter((event) => {
-        if (event.type === 'background' || event.display === 'inverse-background') return true;
-
-        if (isSearchResult(view, event)) return true;
-
-        const props = event.extendedProps || event;
-        const canceled = view.getEventTypeCanceledStatusList?.(props.scope) || [];
-        const completed = view.getEventTypeCompletedStatusList?.(props.scope) || [];
-
-        return !(
-          (settings.showCanceledEvents === false && canceled.includes(props.status)) ||
-          (settings.showCompletedEvents === false && completed.includes(props.status))
-        );
-      });
+      events = events.filter((event) => matchesStatusSettings(view, event, settings));
     }
 
     const userId = view.getUser?.()?.id;
@@ -206,13 +216,7 @@ define('calendar-plus:calendar-definitions', [], () => {
           !declined || settings.showDeclinedEvents !== false || isSearchResult(view, event);
 
         if (declined && keep[position]) {
-          props.isDeclined = true;
-          event.className = Array.isArray(event.className)
-            ? [...new Set([...event.className, 'cp-event-declined'])]
-            : [...new Set(`${event.className || ''} cp-event-declined`.trim().split(/\s+/))].join(
-                ' ',
-              );
-          view.styleDeclinedEvent?.(event);
+          markDeclinedEvent(view, event, props);
         }
       }
     };
