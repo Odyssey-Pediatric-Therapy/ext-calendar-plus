@@ -22,14 +22,36 @@ class UserResolver
   }
 
   /** @return array<int, array{id: string, name: ?string}> */
-  public function resolve(mixed $userIds = [], mixed $teamIds = [], mixed $includeInactive = false): array
-  {
+  public function resolve(
+    mixed $userIds = [],
+    mixed $teamIds = [],
+    mixed $includeInactive = false,
+    mixed $teamColumns = [],
+    mixed $inactiveUserIds = [],
+  ): array {
+    return $this->resolveSelection($userIds, $teamIds, $includeInactive, $teamColumns, $inactiveUserIds)['users'];
+  }
+
+  /** @return array{users: list<array{id: string, name: ?string}>, teamUserIdLists: array<string, list<string>>} */
+  public function resolveSelection(
+    mixed $userIds = [],
+    mixed $teamIds = [],
+    mixed $includeInactive = false,
+    mixed $teamColumns = [],
+    mixed $inactiveUserIds = [],
+  ): array {
     if (!$this->acl->check('Calendar') || $this->acl->getPermissionLevel('userCalendar') === 'no') {
       throw new Forbidden();
     }
 
     $userIds = Selection::ids($userIds);
     $teamIds = Selection::ids($teamIds, Selection::MAX_TEAMS);
+    $inactiveTeams = array_intersect(Selection::inactiveTeams($teamColumns), $teamIds);
+    $inactiveUserIds = Selection::ids($inactiveUserIds);
+
+    if (array_diff($inactiveUserIds, $userIds)) {
+      throw new BadRequest('Inactive user overrides must be part of the selected user list.');
+    }
 
     if (!is_bool($includeInactive)) {
       throw new BadRequest('Invalid inactive user option.');
@@ -43,26 +65,37 @@ class UserResolver
     }
 
     if (!$userIds && !$teamIds) {
-      return [];
+      return ['users' => [], 'teamUserIdLists' => []];
     }
 
     $filter = ['type' => self::USER_TYPES];
 
-    if (!$includeInactive) {
+    $needsInactive = $includeInactive || $inactiveTeams || $inactiveUserIds;
+
+    if (!$needsInactive) {
       $filter['isActive'] = true;
     }
 
     $repository = $this->entityManager->getRDBRepositoryByClass(User::class);
     $permissionCache = [];
     $eligible = [];
+    $active = [];
     $conditions = [];
 
     if ($userIds) {
-      $conditions[] = ['id' => $userIds];
+      $conditions[] = ['id' => $userIds, ...($needsInactive && !$includeInactive ? ['isActive' => true] : [])];
+
+      if ($inactiveUserIds) {
+        $conditions[] = ['id' => $inactiveUserIds];
+      }
     }
 
     if ($teamIds) {
-      $conditions[] = ['teams.id' => $teamIds];
+      $conditions[] = ['teams.id' => $teamIds, ...($needsInactive ? ['isActive' => true] : [])];
+
+      if ($inactiveTeams) {
+        $conditions[] = ['teams.id' => array_values($inactiveTeams)];
+      }
     }
 
     $query = $teamIds ? $repository->leftJoin('teams')->distinct() : $repository->where([]);
@@ -75,19 +108,20 @@ class UserResolver
     foreach ($candidates as $user) {
       if ($this->canInclude($user, $permissionCache)) {
         $eligible[$user->getId()] = $this->summary($user);
+        $active[$user->getId()] = $user->get('isActive') !== false;
       }
     }
 
     $users = [];
 
     foreach ($userIds as $id) {
-      if (isset($eligible[$id])) {
+      if (isset($eligible[$id]) && ($active[$id] || $includeInactive || in_array($id, $inactiveUserIds, true))) {
         $users[$id] = $eligible[$id];
       }
     }
 
     if (!$teamIds || !$eligible) {
-      return array_values($users);
+      return ['users' => array_values($users), 'teamUserIdLists' => array_fill_keys($teamIds, [])];
     }
 
     // Read relation aliases as raw rows; ORM User entities discard unknown attributes.
@@ -100,13 +134,18 @@ class UserResolver
       ->build();
     $memberships = $this->entityManager->getQueryExecutor()->execute($membershipQuery);
     $teams = array_fill_keys($teamIds, []);
+    $teamMembers = array_fill_keys($teamIds, []);
 
     while ($row = $memberships->fetch()) {
       $id = $row['id'];
       $teamId = $row['teamId'];
 
-      if (!isset($users[$id]) && isset($teams[$teamId], $eligible[$id])) {
-        $teams[$teamId][$id] = $eligible[$id];
+      if (isset($teams[$teamId], $eligible[$id]) && ($active[$id] || in_array($teamId, $inactiveTeams, true))) {
+        $teamMembers[$teamId][$id] = $id;
+
+        if (!isset($users[$id])) {
+          $teams[$teamId][$id] = $eligible[$id];
+        }
       }
     }
 
@@ -116,7 +155,10 @@ class UserResolver
       $users += $members;
     }
 
-    return array_values($users);
+    return [
+      'users' => array_values($users),
+      'teamUserIdLists' => array_map(static fn (array $ids): array => array_values($ids), $teamMembers),
+    ];
   }
 
   /** @param array<string, bool> $cache */

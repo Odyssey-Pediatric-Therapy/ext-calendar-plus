@@ -72,7 +72,7 @@ function fixture(item = null) {
       'views/fields/varchar': Field,
       'views/fields/enum': Field,
       'calendar-plus:views/calendar/fields/users': Field,
-      'crm:views/calendar/fields/teams': Field,
+      'calendar-plus:views/calendar/fields/teams': Field,
       'calendar-plus:calendar-definitions': definitions,
     },
     espo,
@@ -125,9 +125,11 @@ test('one editor exposes Day, Week, Month, and Timeline with both team and peopl
     'month',
     'timeline',
   ]);
-  assert.equal(rows[1][0].view.options.name, 'users');
-  assert.equal(rows[2][0].view.options.name, 'teams');
-  assert.equal(rows[1][0].view.options.params.tooltip, true);
+  assert.equal(rows[1][0].view.options.name, 'showInactiveUsers');
+  assert.equal(rows[1][1].view.options.name, 'membershipMode');
+  assert.equal(rows[2][0].view.options.name, 'users');
+  assert.equal(rows[2][1].view.options.name, 'teams');
+  assert.equal(rows[2][1].view.options.params.tooltip, true);
   assert.equal(rows[2][0].view.options.params.tooltip, true);
   assert.equal(editor.headerText, 'Create Calendar');
 });
@@ -320,8 +322,11 @@ test('default Timeline editor preserves old users and exposes membership setting
   assert.deepEqual(Array.from(editor.model.attributes.usersIds), ['bob']);
   const rows = editor.recordView.options.detailLayout[0].rows;
   assert.deepEqual(
-    Array.from(rows, (row) => row[0].view.options.name),
-    ['users', 'teams', 'membershipMode'],
+    Array.from(rows, (row) => Array.from(row, (cell) => cell.view.options.name)),
+    [
+      ['showInactiveUsers', 'membershipMode'],
+      ['users', 'teams'],
+    ],
   );
   assert.equal(editor.dropdownItemList.length, 0);
   assert.equal(editor.headerText, 'Edit Timeline');
@@ -581,7 +586,7 @@ test('inactive-user choice follows a saved calendar ID and appears in its edit d
   const rows = editor.recordView.options.detailLayout[0].rows;
   assert.equal(
     rows.some((row) => row.some((cell) => cell && cell.view.options.name === 'showInactiveUsers')),
-    false,
+    true,
   );
   state.calendarViewDataList = [];
   state.calendarPlusList = [{ id: 'grid', name: 'Timeline' }];
@@ -636,10 +641,10 @@ test('new and existing calendars default to dynamic membership and expose the st
     const { editor } = fixture(item);
     editor.setup();
     assert.equal(editor.model.attributes.membershipMode, 'dynamic');
-    const row = editor.recordView.options.detailLayout[0].rows.find(
-      (row) => row[0].view.options.name === 'membershipMode',
+    const row = editor.recordView.options.detailLayout[0].rows.find((row) =>
+      row.some((cell) => cell && cell.view.options.name === 'membershipMode'),
     );
-    assert.deepEqual(Array.from(row[0].view.options.params.options), ['dynamic', 'static']);
+    assert.deepEqual(Array.from(row[1].view.options.params.options), ['dynamic', 'static']);
   }
 });
 
@@ -651,7 +656,10 @@ test('every calendar type captures a deduplicated static list including inactive
       postRequest: async (url, body) => {
         calls.push({ url, body });
 
-        return { users: [{ id: 'ann' }, { id: 'former' }, { id: 'bob' }, { id: 'bob' }] };
+        return {
+          users: [{ id: 'ann' }, { id: 'former' }, { id: 'bob' }, { id: 'bob' }],
+          teamUserIdLists: { team: ['ann', 'former', 'bob'] },
+        };
       },
     };
     editor.setup();
@@ -669,10 +677,12 @@ test('every calendar type captures a deduplicated static list including inactive
       teamIdList: ['team'],
       userIdList: ['bob'],
       includeInactiveUsers: true,
+      teamColumns: { team: { showInactiveUsers: true } },
     });
     const stored = state.calendarViewDataList.find((item) => item.name === 'Static calendar');
     assert.equal(stored.membershipMode, 'static');
     assert.deepEqual(Array.from(stored.staticUserIdList), ['ann', 'former', 'bob']);
+    assert.deepEqual(Array.from(stored.staticTeamUserIdLists.team), ['ann', 'former', 'bob']);
     assert.deepEqual(Array.from(stored.teamIdList), ['team']);
     assert.deepEqual(Array.from(stored.userIdList), ['bob']);
     assert.equal(state.closed, true);
@@ -1542,4 +1552,43 @@ test('visible time range saves three-digit input with its leading zero and colon
   await view.actionSave();
   assert.equal(state.calendarPlusViewSettings['view:grid'].visibleTimeStart, '03:00');
   assert.equal(state.calendarPlusViewSettings['view:grid'].visibleTimeEnd, '15:00');
+});
+
+test('team inactive flags round-trip independently of the explicit user option', async () => {
+  const { editor, state } = fixture();
+  editor.setup();
+  Object.assign(editor.model.attributes, {
+    name: 'Teams',
+    teamsIds: ['a', 'b'],
+    teamsColumns: { a: { showInactiveUsers: true }, b: { showInactiveUsers: false } },
+    showInactiveUsers: false,
+  });
+  await editor.actionSave();
+  const stored = state.calendarViewDataList.find((item) => item.name === 'Teams');
+  assert.equal(stored.teamColumns.a.showInactiveUsers, true);
+  assert.equal(stored.teamColumns.b.showInactiveUsers, false);
+  const reopened = fixture(stored).editor;
+  reopened.setup();
+  assert.equal(reopened.model.attributes.teamsColumns.a.showInactiveUsers, true);
+});
+
+test('static inactive inclusion uses frozen team membership and explicit users independently', () => {
+  const item = {
+    membershipMode: 'static',
+    userIdList: ['explicit'],
+    teamIdList: ['a', 'b'],
+    staticUserIdList: ['explicit', 'ann', 'bob', 'shared'],
+    staticTeamUserIdLists: { a: ['ann', 'shared'], b: ['bob', 'shared'] },
+    teamColumns: { a: { showInactiveUsers: false }, b: { showInactiveUsers: true } },
+  };
+  assert.deepEqual(Array.from(definitions.membershipSelection(item).inactiveUserIdList), [
+    'bob',
+    'shared',
+  ]);
+  assert.deepEqual(Array.from(definitions.membershipSelection(item, true).inactiveUserIdList), [
+    'explicit',
+    'bob',
+    'shared',
+  ]);
+  assert.equal(definitions.membershipSelection(item).teamIdList.length, 0);
 });

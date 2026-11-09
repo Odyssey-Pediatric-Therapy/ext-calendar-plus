@@ -88,7 +88,7 @@ define('calendar-plus:views/calendar/settings-form', [
 
       this.settingNames = [];
 
-      const add = (name, label, Field = Bool, params = {}) => {
+      const add = (name, label, Field = Bool, params = {}, tooltipText) => {
         this.settingNames.push(name);
 
         const sectionName =
@@ -101,13 +101,22 @@ define('calendar-plus:views/calendar/settings-form', [
               name,
               labelText: this.translate(label, 'labels', 'Calendar'),
               params,
+              ...(tooltipText ? { tooltipText } : {}),
             }),
           },
           false,
         ]);
       };
 
-      if (inactiveUsersAvailable) add('showInactiveUsers', 'Show inactive users');
+      if (inactiveUsersAvailable) {
+        add(
+          'showInactiveUsers',
+          'Show inactive users',
+          Bool,
+          { tooltip: true },
+          this.translate('Explicit Inactive Users Help', 'messages', 'Calendar'),
+        );
+      }
 
       add('showWeekends', 'Show weekends');
 

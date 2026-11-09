@@ -24,6 +24,21 @@ final class CalendarPreferencesTest extends TestCase
     self::assertTrue($this->valid('calendarPlusSharedSelection', '{"teamIdList":[],"userIdList":["ann"],"membershipMode":"dynamic"}'));
   }
 
+  public function testTeamInactiveOptionsAndFrozenMembershipAreValidated(): void
+  {
+    self::assertTrue($this->valid('calendarPlusSharedSelection',
+      '{"teamIdList":["a"],"teamColumns":{"a":{"showInactiveUsers":true}},"membershipMode":"static","staticUserIdList":["ann"],"staticTeamUserIdLists":{"a":["ann"]}}'));
+
+    foreach ([
+      '{"teamColumns":{"a":{"showInactiveUsers":"true"}}}',
+      '{"teamColumns":{"a":true}}',
+      '{"staticUserIdList":["ann"],"staticTeamUserIdLists":{"a":["other"]}}',
+      '{"staticTeamUserIdLists":[]}',
+    ] as $json) {
+      self::assertFalse($this->valid('calendarPlusSharedSelection', $json), $json);
+    }
+  }
+
   public function testMalformedCalendarMembershipIsRejected(): void
   {
     foreach ([

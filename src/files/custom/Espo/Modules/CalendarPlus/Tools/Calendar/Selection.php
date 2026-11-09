@@ -29,4 +29,34 @@ final class Selection
 
     return array_values(array_unique($value));
   }
+
+  /** @return string[] */
+  public static function inactiveTeams(mixed $columns): array
+  {
+    if ($columns === []) {
+      return [];
+    }
+
+    if (!$columns instanceof \stdClass || count(get_object_vars($columns)) > self::MAX_TEAMS) {
+      throw new BadRequest('Invalid calendar team options.');
+    }
+
+    $ids = [];
+
+    foreach (get_object_vars($columns) as $id => $options) {
+      if (
+        !self::isId((string) $id) ||
+        !$options instanceof \stdClass ||
+        (property_exists($options, 'showInactiveUsers') && !is_bool($options->showInactiveUsers))
+      ) {
+        throw new BadRequest('Invalid calendar team options.');
+      }
+
+      if (($options->showInactiveUsers ?? false) === true) {
+        $ids[] = (string) $id;
+      }
+    }
+
+    return $ids;
+  }
 }

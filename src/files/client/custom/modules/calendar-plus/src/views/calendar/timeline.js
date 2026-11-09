@@ -429,12 +429,13 @@ define('calendar-plus:views/calendar/timeline', [
 
       if (item) {
         try {
+          const includeInactive = Definitions.showInactiveUsers(
+            this.getPreferences(),
+            this.mode || item.routeMode || 'timeline',
+          );
           const data = await Espo.Ajax.postRequest('CalendarPlus/Users', {
-            ...Definitions.membershipSelection(item),
-            ...(Definitions.showInactiveUsers(
-              this.getPreferences(),
-              this.mode || item.routeMode || 'timeline',
-            )
+            ...Definitions.membershipSelection(item, includeInactive),
+            ...(includeInactive && item.membershipMode !== 'static'
               ? { includeInactiveUsers: true }
               : {}),
           });

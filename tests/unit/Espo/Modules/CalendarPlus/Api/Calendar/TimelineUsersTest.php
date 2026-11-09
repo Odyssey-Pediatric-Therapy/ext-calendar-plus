@@ -36,13 +36,14 @@ final class MembershipStatement extends PDOStatement
 
 final class TimelineUsersTest extends TestCase
 {
-  private function user(string $id, string $name, ?string $team = null, string $type = 'regular'): User
+  private function user(string $id, string $name, ?string $team = null, string $type = 'regular', bool $active = true): User
   {
     $user = $this->createMock(User::class);
     $user->method('getId')->willReturn($id);
     $user->method('getType')->willReturn($type);
     $user->method('get')->willReturnCallback(static fn ($field) => match ($field) {
       'name' => $name,
+      'isActive' => $active,
       'calendarPlusTeamId' => $team,
       default => null,
     });
@@ -177,6 +178,53 @@ final class TimelineUsersTest extends TestCase
     self::assertArrayNotHasKey('isActive', $queries[0]);
   }
 
+  public function testInactiveMembersAreControlledPerTeamIndependentlyOfExplicitUsers(): void
+  {
+    foreach ([false, true] as $includeInactive) {
+      $queries = [];
+      $manager = $this->manager(
+        [$this->user('explicit', 'Explicit', null, 'regular', false)],
+        [
+          $this->user('active', 'Active', 'team-a'),
+          $this->user('hidden', 'Hidden', 'team-a', 'regular', false),
+          $this->user('shared', 'Shared', 'team-a', 'regular', false),
+          $this->user('shared', 'Shared', 'team-b', 'regular', false),
+          $this->user('former', 'Former', 'team-b', 'regular', false),
+        ],
+        $queries,
+      );
+      $acl = $this->acl();
+      $acl->method('checkUserPermission')->willReturn(true);
+      $resolver = new UserResolver($manager, $acl, $this->user('me', 'Me'));
+      $result = $resolver->resolveSelection(['explicit'], ['team-a', 'team-b'], $includeInactive,
+        (object) ['team-b' => (object) ['showInactiveUsers' => true]]);
+
+      self::assertSame(
+        $includeInactive ? ['explicit', 'active', 'former', 'shared'] : ['active', 'former', 'shared'],
+        array_column($result['users'], 'id'),
+      );
+      self::assertSame(['active'], $result['teamUserIdLists']['team-a']);
+      self::assertSame(['shared', 'former'], $result['teamUserIdLists']['team-b']);
+      self::assertCount(2, $queries);
+      self::assertSame(['team-b'], $queries[0]['OR'][2]['teams.id']);
+    }
+  }
+
+  public function testStaticSelectionAllowsOnlySpecifiedInactiveIds(): void
+  {
+    $manager = $this->manager([
+      $this->user('active', 'Active'),
+      $this->user('shown', 'Shown', null, 'regular', false),
+      $this->user('hidden', 'Hidden', null, 'regular', false),
+    ]);
+    $acl = $this->acl();
+    $acl->method('checkUserPermission')->willReturn(true);
+    $users = (new UserResolver($manager, $acl, $this->user('me', 'Me')))
+      ->resolve(['active', 'shown', 'hidden'], [], false, [], ['shown']);
+
+    self::assertSame(['active', 'shown'], array_column($users, 'id'));
+  }
+
   public function testEmptySelectionNeverQueriesEveryone(): void
   {
     $manager = $this->createMock(EntityManager::class);
@@ -203,7 +251,7 @@ final class TimelineUsersTest extends TestCase
     $manager = $this->createMock(EntityManager::class);
     $manager->expects(self::never())->method('getRDBRepositoryByClass');
     $resolver = new UserResolver($manager, $this->acl(), $this->user('me', 'Me'));
-    foreach ([['not-array', [], false], [[1], [], false], [[], [''], false], [[], [], 'true'], [array_fill(0, 301, 'user'), [], false], [[], array_fill(0, 101, 'team'), false]] as $arguments) {
+    foreach ([['not-array', [], false], [[1], [], false], [[], [''], false], [[], [], 'true'], [[], [], false, (object) ['team' => (object) ['showInactiveUsers' => 'yes']]], [['ann'], [], false, [], ['other']], [array_fill(0, 301, 'user'), [], false], [[], array_fill(0, 101, 'team'), false]] as $arguments) {
       try {
         $resolver->resolve(...$arguments);
         self::fail('Malformed selection was accepted.');

@@ -18,12 +18,12 @@ class TimelineUsers implements Action
   {
     $data = $request->getParsedBody();
 
-    return ResponseComposer::json([
-      'users' => $this->resolver->resolve(
-        $data->userIdList ?? [],
-        $data->teamIdList ?? [],
-        $data->includeInactiveUsers ?? false,
-      ),
-    ]);
+    return ResponseComposer::json($this->resolver->resolveSelection(
+      $data->userIdList ?? [],
+      $data->teamIdList ?? [],
+      $data->includeInactiveUsers ?? false,
+      $data->teamColumns ?? [],
+      $data->inactiveUserIdList ?? [],
+    ));
   }
 }

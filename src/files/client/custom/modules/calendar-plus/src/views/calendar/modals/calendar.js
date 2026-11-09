@@ -5,7 +5,7 @@ define('calendar-plus:views/calendar/modals/calendar', [
   'views/fields/varchar',
   'views/fields/enum',
   'calendar-plus:views/calendar/fields/users',
-  'crm:views/calendar/fields/teams',
+  'calendar-plus:views/calendar/fields/teams',
   'calendar-plus:calendar-definitions',
   'calendar-plus:views/calendar/settings-form',
 ], (Modal, Model, Record, Varchar, Enum, Users, Teams, Definitions, SettingsForm) => {
@@ -69,27 +69,47 @@ define('calendar-plus:views/calendar/modals/calendar', [
           usersNames: item?.userNames || {},
           teamsIds: item?.teamIdList || [],
           teamsNames: item?.teamNames || {},
+          teamsColumns: item?.teamColumns || {},
           membershipMode: item?.membershipMode === 'static' ? 'static' : 'dynamic',
         }),
       );
       this.model.name = 'CalendarView';
 
-      const rows = this.calendarRows(membershipOnly, settingsOnly);
       const settingsLayout = this.settingsForm.layout(
         this.model.attributes.mode,
         !settingsOnly,
         !settingsOnly && !membershipOnly,
       );
 
+      const peopleSection = settingsLayout.find((section) => section.name === 'people');
+      const peopleFields = peopleSection?.rows.flat().filter(Boolean) || [];
+      const inactiveUsers = peopleFields.find(
+        (field) => field.view.options.name === 'showInactiveUsers',
+      );
+
+      if (inactiveUsers) {
+        const remainingFields = peopleFields.filter((field) => field !== inactiveUsers);
+        peopleSection.rows = [];
+
+        for (let index = 0; index < remainingFields.length; index += 2) {
+          peopleSection.rows.push([remainingFields[index], remainingFields[index + 1] || false]);
+        }
+      }
+
+      const rows = this.calendarRows(membershipOnly, settingsOnly, inactiveUsers);
+
       this.recordView = new Record({
         model: this.model,
-        detailLayout: [...(rows.length ? [{ rows }] : []), ...settingsLayout],
+        detailLayout: [
+          ...(rows.length ? [{ rows }] : []),
+          ...settingsLayout.filter((section) => section.rows.length),
+        ],
         dynamicLogicDefs: this.settingsForm.dynamicLogicDefs(),
       });
       this.assignView('record', this.recordView);
     }
 
-    calendarRows(membershipOnly, settingsOnly) {
+    calendarRows(membershipOnly, settingsOnly, inactiveUsers) {
       const rows = [];
 
       if (!membershipOnly && !settingsOnly) {
@@ -120,31 +140,10 @@ define('calendar-plus:views/calendar/modals/calendar', [
         ]);
       }
 
-      if (!settingsOnly)
+      if (!settingsOnly) {
         rows.push(
           [
-            {
-              view: new Users({
-                name: 'users',
-                labelText: this.translate('users', 'fields'),
-                tooltipText: this.translate('Calendar Users Order Help', 'messages', 'Calendar'),
-                params: { tooltip: true },
-              }),
-            },
-            false,
-          ],
-          [
-            {
-              view: new Teams({
-                name: 'teams',
-                labelText: this.translate('teams', 'fields'),
-                tooltipText: this.translate('Calendar Teams Order Help', 'messages', 'Calendar'),
-                params: { tooltip: true },
-              }),
-            },
-            false,
-          ],
-          [
+            inactiveUsers,
             {
               view: new Enum({
                 name: 'membershipMode',
@@ -161,9 +160,27 @@ define('calendar-plus:views/calendar/modals/calendar', [
                 },
               }),
             },
-            false,
+          ],
+          [
+            {
+              view: new Users({
+                name: 'users',
+                labelText: this.translate('users', 'fields'),
+                tooltipText: this.translate('Calendar Users Order Help', 'messages', 'Calendar'),
+                params: { tooltip: true },
+              }),
+            },
+            {
+              view: new Teams({
+                name: 'teams',
+                labelText: this.translate('teams', 'fields'),
+                tooltipText: this.translate('Calendar Teams Order Help', 'messages', 'Calendar'),
+                params: { tooltip: true },
+              }),
+            },
           ],
         );
+      }
 
       return rows;
     }
@@ -216,6 +233,7 @@ define('calendar-plus:views/calendar/modals/calendar', [
         userNames: data.usersNames || {},
         teamIdList: data.teamsIds || [],
         teamNames: data.teamsNames || {},
+        teamColumns: data.teamsColumns || {},
         membershipMode: data.membershipMode === 'static' ? 'static' : 'dynamic',
       };
 
@@ -226,15 +244,21 @@ define('calendar-plus:views/calendar/modals/calendar', [
       try {
         if (item.membershipMode === 'static') {
           // Capture inactive members too, so Show inactive users can reveal them later.
-          const { users } = await Espo.Ajax.postRequest('CalendarPlus/Users', {
+          const { users, teamUserIdLists } = await Espo.Ajax.postRequest('CalendarPlus/Users', {
             teamIdList: item.teamIdList,
             userIdList: item.userIdList,
             includeInactiveUsers: true,
+            teamColumns: Object.fromEntries(
+              item.teamIdList.map((id) => [id, { showInactiveUsers: true }]),
+            ),
           });
 
           if (this.calendarEditorRemoved) return;
 
           item.staticUserIdList = this.staticUserIds(users);
+          item.staticTeamUserIdLists = Object.fromEntries(
+            item.teamIdList.map((id) => [id, teamUserIdLists?.[id] || []]),
+          );
 
           if (item.staticUserIdList.length > 500) {
             Espo.Ui.error(this.translate('Static Calendar Member Limit', 'messages', 'Calendar'));
@@ -325,10 +349,16 @@ define('calendar-plus:views/calendar/modals/calendar', [
       const selection = {
         teamIdList: item.teamIdList,
         teamNames: item.teamNames,
+        teamColumns: item.teamColumns,
         userIdList: item.userIdList,
         userNames: item.userNames,
         membershipMode: item.membershipMode || 'dynamic',
-        ...(item.membershipMode === 'static' ? { staticUserIdList: item.staticUserIdList } : {}),
+        ...(item.membershipMode === 'static'
+          ? {
+              staticUserIdList: item.staticUserIdList,
+              staticTeamUserIdLists: item.staticTeamUserIdLists,
+            }
+          : {}),
       };
 
       try {
