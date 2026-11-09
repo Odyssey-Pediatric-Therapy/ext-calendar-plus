@@ -3,7 +3,8 @@
 - See everyone’s schedule together. Combine teams and individual people in one shared calendar.
 - Choose the right perspective. Switch between Day, Week, Month, and Timeline from one calendar selector.
 - Create and edit every calendar type in one place. Save dedicated views for departments, projects, or cross-team coordination.
-- Compare availability side by side. Shared Day gives each person an aligned column with time slots and all-day events.
+- Find a common meeting time in the existing Meeting and Call scheduler. Next available searches forward for a slot that fits everyone, preserves the event duration, and updates the unsaved times.
+- Compare availability side by side. Shared Day gives each person an aligned column with time slots, all-day events, and non-working hours shaded from their working-time calendar.
 - Add people directly from the calendar. Drop into another person’s Day column or onto their Week legend entry to add them as an attendee. If there is no attendee field, add them as a collaborator when supported; reassign only when neither relationship exists. Day drops can also reschedule the event; Week legend drops keep its time.
 - Preserve ownership and attendee responses. Adding an attendee or collaborator keeps the assigned user, existing participants, and their response statuses unchanged, and avoids duplicate participants.
 - Focus on the people who matter. Instantly show or hide individual schedules, with visibility remembered per calendar in the browser.
