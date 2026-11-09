@@ -1,10 +1,18 @@
 {
     "fields": {
         "calendarPlusList": {
-            "type": "jsonArray"
+            "type": "jsonArray",
+            "validatorClassNameList": [
+                "__APPEND__",
+                "Espo\\Modules\\CalendarPlus\\FieldValidation\\CalendarPreferences"
+            ]
         },
         "calendarPlusSharedSelection": {
-            "type": "jsonObject"
+            "type": "jsonObject",
+            "validatorClassNameList": [
+                "__APPEND__",
+                "Espo\\Modules\\CalendarPlus\\FieldValidation\\CalendarPreferences"
+            ]
         },
         "calendarSlotDuration": {
             "options": [
@@ -16,10 +24,24 @@
             ]
         },
         "calendarPlusViewSettings": {
-            "type": "jsonObject"
+            "type": "jsonObject",
+            "validatorClassNameList": [
+                "__APPEND__",
+                "Espo\\Modules\\CalendarPlus\\FieldValidation\\CalendarPreferences"
+            ]
         },
         "calendarPlusSearchSettings": {
-            "type": "jsonObject"
+            "type": "jsonObject",
+            "validatorClassNameList": [
+                "__APPEND__",
+                "Espo\\Modules\\CalendarPlus\\FieldValidation\\CalendarPreferences"
+            ]
+        },
+        "calendarViewDataList": {
+            "validatorClassNameList": [
+                "__APPEND__",
+                "Espo\\Modules\\CalendarPlus\\FieldValidation\\CalendarPreferences"
+            ]
         }
     }
 }
