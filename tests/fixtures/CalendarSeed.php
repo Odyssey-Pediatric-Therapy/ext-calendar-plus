@@ -15,6 +15,11 @@ final class CalendarSeed
   public readonly DateTimeImmutable $start;
   public readonly DateTimeImmutable $end;
 
+  public readonly string $startTime;
+  public readonly string $endTime;
+
+  private readonly int $dayStartMinutes;
+  private readonly int $dayEndMinutes;
   private Generator $faker;
 
   public function __construct(
@@ -23,6 +28,8 @@ final class CalendarSeed
     private int $userCount = 15,
     private int $teamCount = 5,
     private int $eventsPerDay = 8,
+    string $startTime = '0800',
+    string $endTime = '1800',
   ) {
     if (!preg_match('/^[a-z0-9]{1,24}$/D', $runId)) {
       throw new InvalidArgumentException('Run ID must contain 1–24 lowercase letters or digits.');
@@ -39,6 +46,16 @@ final class CalendarSeed
         throw new InvalidArgumentException("--$name must be between $minimum and $maximum.");
       }
     }
+
+    $this->dayStartMinutes = $this->timeMinutes($startTime);
+    $this->dayEndMinutes = $this->timeMinutes($endTime, true);
+
+    if ($this->dayEndMinutes <= $this->dayStartMinutes) {
+      throw new InvalidArgumentException('--end-time must be later than --start-time on the same day.');
+    }
+
+    $this->startTime = sprintf('%02d:%02d', intdiv($this->dayStartMinutes, 60), $this->dayStartMinutes % 60);
+    $this->endTime = sprintf('%02d:%02d', intdiv($this->dayEndMinutes, 60), $this->dayEndMinutes % 60);
 
     $this->start = $this->monthOffset($today, -6);
     $this->end = $this->monthOffset($today, 6)->setTime(23, 59, 59);
@@ -99,6 +116,7 @@ final class CalendarSeed
       throw new InvalidArgumentException('Event schedules require 1–301 participants, including admin.');
     }
 
+    $dayMinutes = $this->dayEndMinutes - $this->dayStartMinutes;
     $types = ['Meeting', 'Call', 'Task'];
     $dayIndex = 0;
 
@@ -114,16 +132,19 @@ final class CalendarSeed
 
         for ($slot = 0; $slot < $eventCount; $slot++) {
           $type = $types[($user + $slot + $dayIndex) % count($types)];
-          $minutes = 480 + (int) floor($slot * 480 / $eventCount);
-          $minutes += $this->faker->numberBetween(0, 8) * 5;
-          $duration = $this->faker->randomElement([20, 25, 30, 40, 45, 50, 60, 75]);
+          $minutes = $this->dayStartMinutes + (int) floor($slot * $dayMinutes / $eventCount);
+          $jitterSteps = (int) floor(min(40, $dayMinutes / $eventCount / 2) / 5);
+          $minutes += $this->faker->numberBetween(0, $jitterSteps) * 5;
+          $duration = min($dayMinutes, $this->faker->randomElement([20, 25, 30, 40, 45, 50, 60, 75]));
 
           // Deliberate overlap alongside otherwise independently spaced appointments.
           if ($slot === 2 && $user % 3 === 0) {
             $minutes = $previousStart + max(5, $previousDuration - 15);
           }
 
-          $start = $day->modify("+$minutes minutes");
+          // Keep both ends inside the local daily window, including short windows.
+          $minutes = max($this->dayStartMinutes, min($minutes, $this->dayEndMinutes - $duration));
+          $start = $day->setTime(intdiv($minutes, 60), $minutes % 60);
           $end = $start->modify("+$duration minutes");
           $status = $type === 'Task' ? 'Not Started' : 'Planned';
 
@@ -156,6 +177,26 @@ final class CalendarSeed
 
       $dayIndex++;
     }
+  }
+
+  private function timeMinutes(string $value, bool $allowEndOfDay = false): int
+  {
+    $value = trim($value);
+
+    if (!preg_match('/^(?:\d{3,4}|\d{1,2}:\d{2})$/D', $value)) {
+      throw new InvalidArgumentException('Times must use HHmm or HH:mm format, for example 0800 or 08:00.');
+    }
+
+    $digits = str_pad(str_replace(':', '', $value), 4, '0', STR_PAD_LEFT);
+    $hour = (int) substr($digits, 0, 2);
+    $minute = (int) substr($digits, 2, 2);
+    $endOfDay = $allowEndOfDay && $hour === 24 && $minute === 0;
+
+    if ($minute > 59 || ($hour > 23 && !$endOfDay)) {
+      throw new InvalidArgumentException('Invalid time: ' . $value);
+    }
+
+    return $hour * 60 + $minute;
   }
 
   private function monthOffset(DateTimeImmutable $day, int $months): DateTimeImmutable

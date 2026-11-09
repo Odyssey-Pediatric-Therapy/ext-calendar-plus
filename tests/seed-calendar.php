@@ -9,7 +9,7 @@ use function Tests\Fixtures\{application, manifestPath, options, relate, sitePat
 require __DIR__ . '/fixtures/manual.php';
 
 try {
-  $options = options($argv, ['users', 'teams', 'events-per-day', 'timezone', 'run-id'], ['generate-users', 'dry-run', 'help']);
+  $options = options($argv, ['users', 'teams', 'events-per-day', 'start-time', 'end-time', 'timezone', 'run-id'], ['generate-users', 'dry-run', 'help']);
 
   if (isset($options['help'])) {
     echo <<<'HELP'
@@ -22,6 +22,8 @@ php tests/seed-calendar.php
 --users=15           Users to create with --generate-users; 15–300.
 --teams=5            Teams to create with --generate-users; 2–100.
 --events-per-day=8   Maximum events per person per weekday; randomized from 4 to this value (4–12).
+--start-time=0800    Earliest event start in local time; HHmm or HH:mm.
+--end-time=1800      Latest event end in local time; HHmm or HH:mm (2400 allowed).
 --timezone=ZONE      Defaults to this repository's site timezone, then UTC.
 --run-id=LABEL       Unique 1–24 lowercase letters/digits; random by default.
 --dry-run            Preview without writing records; default mode reads existing users.
@@ -146,6 +148,8 @@ HELP;
     $generateUsers ? $counts['users'] : count($users),
     $generateUsers ? $counts['teams'] : count($teams),
     $counts['events-per-day'],
+    $options['start-time'] ?? '0800',
+    $options['end-time'] ?? '1800',
   );
 
   if ($generateUsers) {
@@ -200,12 +204,14 @@ HELP;
   };
 
   printf(
-    "Run: %s\nTest instance: %s\nTimezone: %s\nRange: %s through %s\nUsers: %d; teams: %d\n",
+    "Run: %s\nTest instance: %s\nTimezone: %s\nRange: %s through %s\nLocal hours: %s to %s\nUsers: %d; teams: %d\n",
     $runId,
     $site,
     $timezone->getName(),
     $plan->start->format('Y-m-d'),
     $plan->end->format('Y-m-d'),
+    $plan->startTime,
+    $plan->endTime,
     count($users),
     count($teams),
   );

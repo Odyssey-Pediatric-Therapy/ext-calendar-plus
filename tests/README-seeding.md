@@ -17,10 +17,12 @@ For every selected person, the script generates a random 4–8 events on every w
 
 Schedules include Tasks, Meetings, and Calls with different times, durations, some deliberate overlaps, past completed events, canceled events, attendee acceptance states, and some task collaborators. Faker supplies readable people and company names for event titles. Events are assigned to the selected person and inherit their teams. Meetings and Calls include another selected person when available.
 
-`--events-per-day` sets the maximum daily count (8 by default); each person's daily count is drawn independently from 4 through that maximum. The repository site's timezone determines working hours; stored timestamps use UTC.
+`--events-per-day` sets the maximum daily count (8 by default); each person's daily count is drawn independently from 4 through that maximum. The repository site's timezone determines local working hours; stored timestamps use UTC. `--start-time` and `--end-time` default to `0800` and `1800`. Both accept `HHmm` or `HH:mm`; starts and ends stay inside this daily window. The end must be later than the start; `2400` is allowed as the end of the day. `--timezone` overrides the local timezone and respects its daylight-saving changes.
 
 ```sh
 npm run seed -- --events-per-day=10
+npm run seed -- --start-time=0800 --end-time=1800
+npm run seed -- --start-time=09:30 --end-time=15:00 --timezone=America/Denver
 npm run seed -- --timezone=America/Denver
 npm run seed -- --run-id=customercheck --dry-run
 npm run seed -- --help
