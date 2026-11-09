@@ -408,6 +408,9 @@ define('calendar-plus:views/calendar/calendar', [
     }
 
     colorForEvent(event, userId) {
+      if (event.display === 'background' || event.display === 'inverse-background')
+        return event.color;
+
       const color =
         this.usePersonGradient() && userId
           ? this.colorForUser(userId)
@@ -491,11 +494,23 @@ define('calendar-plus:views/calendar/calendar', [
           userIdList: users.map((user) => user.id).join(','),
           scopeList: this.enabledScopeList.join(','),
         };
-        const data = users.length ? await Espo.Ajax.getRequest('Activities', query) : [];
+        const [data, working] = await Promise.all([
+          users.length ? Espo.Ajax.getRequest('Activities', query) : [],
+          users.length && this.viewMode === 'agendaDay'
+            ? Espo.Ajax.postRequest('CalendarPlus/WorkingTimeRanges', {
+                from,
+                to,
+                userIdList: users.map((user) => user.id),
+              })
+            : { ranges: [] },
+        ]);
 
         if (!current()) return;
 
-        const events = this.convertSharedEvents(data, users);
+        const events = [
+          ...this.convertSharedEvents(data, users),
+          ...this.convertWorkingTimeRanges(working.ranges, users),
+        ];
         const filtered = await Definitions.filterEvents(this, this.includeSearchResult(events));
 
         if (!current()) return;
@@ -555,6 +570,25 @@ define('calendar-plus:views/calendar/calendar', [
         .filter((event) => event.calendarUserIds.length || event.display === 'inverse-background');
     }
 
+    convertWorkingTimeRanges(ranges, users) {
+      const allowedIds = new Set(users.map((user) => user.id));
+
+      return ranges
+        .filter((range) => allowedIds.has(range.userId))
+        .map((range, index) => ({
+          id: `cp-non-working-${range.userId}-${index}`,
+          start: range.dateStart.replace(' ', 'T') + 'Z',
+          end: range.dateEnd.replace(' ', 'T') + 'Z',
+          display: 'background',
+          type: 'background',
+          color: this.colors?.bg || '#dcdcdc',
+          calendarUserIds: [range.userId],
+          editable: false,
+          startEditable: false,
+          durationEditable: false,
+        }));
+    }
+
     updateDate() {
       // Core creates FullCalendar asynchronously, after afterRender returns.
       this.applyViewSettings();
@@ -605,6 +639,9 @@ define('calendar-plus:views/calendar/calendar', [
     }
 
     sharedEventContent(info) {
+      if (['background', 'inverse-background'].includes(info.event.display))
+        return { domNodes: [] };
+
       const frame = document.createElement('div');
 
       frame.className = 'fc-event-main-frame cp-calendar-event-content';
@@ -736,6 +773,8 @@ define('calendar-plus:views/calendar/calendar', [
     }
 
     paintEventGradient(element, event, userId) {
+      if (['background', 'inverse-background'].includes(event.display)) return;
+
       // Mounted EventApi objects can outlive a refetch; use the current membership data.
       const source = this.sharedEvents.find((item) => item.id === event.id);
       const ids = (source?.calendarUserIds || event.extendedProps.calendarUserIds || []).filter(

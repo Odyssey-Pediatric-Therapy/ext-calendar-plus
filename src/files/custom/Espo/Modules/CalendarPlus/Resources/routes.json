@@ -8,5 +8,10 @@
         "route": "/CalendarPlus/NextAvailable",
         "method": "post",
         "actionClassName": "Espo\\Modules\\CalendarPlus\\Api\\Calendar\\NextAvailable"
+    },
+    {
+        "route": "/CalendarPlus/WorkingTimeRanges",
+        "method": "post",
+        "actionClassName": "Espo\\Modules\\CalendarPlus\\Api\\Calendar\\WorkingTimeRanges"
     }
 ]

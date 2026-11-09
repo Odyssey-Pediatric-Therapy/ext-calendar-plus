@@ -169,6 +169,8 @@ function fixture(savedMode = 'basicDay', tasksAllDay) {
       postRequest: async (url, body) => {
         calls.push({ url, body });
 
+        if (url === 'CalendarPlus/WorkingTimeRanges') return { ranges: [] };
+
         return {
           users: [
             { id: 'ann', name: 'Ann' },
@@ -1591,7 +1593,10 @@ test('Day, Week, and Month resolve inactive members only for the selected view w
     assert.equal(calls[0].body.includeInactiveUsers, true);
     values.calendarPlusViewSettings['view:saved'].showInactiveUsers = false;
     await view.fetchEvents('from', 'to', () => {});
-    assert.equal(calls[2].body.includeInactiveUsers, undefined);
+    assert.equal(
+      calls.filter((call) => call.url === 'CalendarPlus/Users')[1].body.includeInactiveUsers,
+      undefined,
+    );
   }
 });
 
@@ -1614,6 +1619,8 @@ test('static Day, Week, and Month use only captured IDs while inactive visibilit
     view.getPreferences = () => ({ get: (key) => values[key] });
     const calls = [];
     espo.Ajax.postRequest = async (url, body) => {
+      if (url === 'CalendarPlus/WorkingTimeRanges') return { ranges: [] };
+
       calls.push(body);
       const all = body.userIdList.map((id) => ({ id, name: id }));
 
@@ -2081,4 +2088,73 @@ test('person legend collapses based on available width and restores the full row
   assert.equal(disconnected, true);
   assert.equal(view.legendElement, null);
   assert.equal(view.legendItems, null);
+});
+
+test('custom Day shows each person’s non-working hours only in their own column', async () => {
+  const { view, espo } = fixture('basicDay');
+  view.colors = { bg: '#cccccc' };
+  const original = espo.Ajax.postRequest;
+  let workingQuery;
+  espo.Ajax.postRequest = async (url, body) => {
+    if (url !== 'CalendarPlus/WorkingTimeRanges') return original(url, body);
+    workingQuery = body;
+    return {
+      ranges: [
+        { userId: 'ann', dateStart: '2026-11-04 00:00:00', dateEnd: '2026-11-04 16:00:00' },
+        { userId: 'bob', dateStart: '2026-11-04 00:00:00', dateEnd: '2026-11-04 18:00:00' },
+        { userId: 'outside', dateStart: '2026-11-04 00:00:00', dateEnd: '2026-11-05 00:00:00' },
+      ],
+    };
+  };
+  await view.fetchEvents('from', 'to', () => {});
+  assert.deepEqual(Array.from(workingQuery.userIdList), ['ann', 'bob']);
+  assert.equal(workingQuery.from, 'from');
+  const ranges = view.sharedEvents.filter((event) => event.display === 'background');
+  assert.equal(ranges.length, 2);
+  assert.equal(view.sharedEventContent({ event: { display: 'background' } }).domNodes.length, 0);
+  for (const { calendar, userId } of view.dayCalendars) {
+    const backgrounds = calendar.sources[0].filter((event) => event.display === 'background');
+    assert.equal(backgrounds.length, 1);
+    assert.deepEqual(Array.from(backgrounds[0].calendarUserIds), [userId]);
+    assert.equal(backgrounds[0].color, '#cccccc');
+    assert.equal(backgrounds[0].editable, false);
+    assert.equal(backgrounds[0].start, '2026-11-04T00:00:00Z');
+    assert.equal(
+      backgrounds[0].end,
+      userId === 'ann' ? '2026-11-04T16:00:00Z' : '2026-11-04T18:00:00Z',
+    );
+  }
+});
+
+test('late Day working-hour responses cannot overwrite a newer calendar view', async () => {
+  const { view, espo } = fixture('basicDay');
+  const original = espo.Ajax.postRequest;
+  let release;
+  let started;
+  const waiting = new Promise((resolve) => {
+    started = resolve;
+  });
+  espo.Ajax.postRequest = (url, body) => {
+    if (url !== 'CalendarPlus/WorkingTimeRanges') return original(url, body);
+    started();
+    return new Promise((resolve) => {
+      release = resolve;
+    });
+  };
+  let oldCallbacks = 0;
+  const old = view.fetchEvents('old', 'old-end', () => {
+    oldCallbacks++;
+  });
+  await waiting;
+  view.viewMode = 'agendaWeek';
+  await view.fetchEvents('new', 'new-end', () => {});
+  release({
+    ranges: [{ userId: 'ann', dateStart: '2026-11-04 00:00:00', dateEnd: '2026-11-05 00:00:00' }],
+  });
+  await old;
+  assert.equal(oldCallbacks, 0);
+  assert.equal(
+    view.sharedEvents.some((event) => event.display === 'background'),
+    false,
+  );
 });
