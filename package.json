@@ -1,6 +1,6 @@
 {
   "name": "espocrm-ext-calendar-plus",
-  "version": "1.2.2",
+  "version": "1.2.4",
   "description": "Calendar Plus: shared calendars, saved views, and team scheduling for EspoCRM.",
   "scripts": {
     "sa": "php site/vendor/bin/phpstan analyse --configuration phpstan.neon",
