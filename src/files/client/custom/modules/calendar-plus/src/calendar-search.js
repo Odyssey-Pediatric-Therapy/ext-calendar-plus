@@ -36,6 +36,7 @@ define('calendar-plus:calendar-search', ['moment', 'calendar-plus:calendar-visib
 
     if (!Object.keys(styles).length && typeof field.optionsReference === 'string') {
       const [entity, attribute] = field.optionsReference.split('.');
+
       styles = view.getMetadata().get(['entityDefs', entity, 'fields', attribute, 'style']) || {};
     }
 
@@ -71,6 +72,55 @@ define('calendar-plus:calendar-search', ['moment', 'calendar-plus:calendar-visib
       return view.getAcl().checkScope(scope, 'read') && (fields.dateStart || fields.dateEnd);
     });
 
+  const condition = (type, attribute, value) => ({
+    type,
+    attribute,
+    ...(value === undefined ? {} : { value }),
+  });
+  const interval = (start, end, lower, upper) => ({
+    type: 'and',
+    value: [
+      {
+        type: 'or',
+        value: [
+          condition('lessThan', start, upper),
+          { type: 'and', value: [condition('isNull', start), condition('lessThan', end, upper)] },
+        ],
+      },
+      {
+        type: 'or',
+        value: [
+          condition('greaterThanOrEquals', end, lower),
+          {
+            type: 'and',
+            value: [condition('isNull', end), condition('greaterThanOrEquals', start, lower)],
+          },
+        ],
+      },
+    ],
+  });
+
+  const selectFields = (fields, links) => {
+    const select = [
+      'id',
+      'name',
+      'dateStart',
+      'dateEnd',
+      'dateStartDate',
+      'dateEndDate',
+      'status',
+    ].filter((name) => ['id', 'name'].includes(name) || fields[name]);
+
+    if (fields.assignedUser || links.assignedUser)
+      select.push('assignedUserId', 'assignedUserName');
+
+    for (const relationship of ['assignedUsers', 'users', 'contacts', 'leads', 'collaborators']) {
+      if (fields[relationship]) select.push(`${relationship}Ids`, `${relationship}Names`);
+    }
+
+    return select;
+  };
+
   const buildQuery = (view, scope, filters, offset = 0) => {
     const fields = view.getMetadata().get(['entityDefs', scope, 'fields']) || {};
     const links = view.getMetadata().get(['entityDefs', scope, 'links']) || {};
@@ -78,33 +128,6 @@ define('calendar-plus:calendar-search', ['moment', 'calendar-plus:calendar-visib
     const from = moment.tz(filters.from, timeZone).startOf('day');
     const to = moment.tz(filters.to, timeZone).add(1, 'day').startOf('day');
     const where = [];
-    const condition = (type, attribute, value) => ({
-      type,
-      attribute,
-      ...(value === undefined ? {} : { value }),
-    });
-    const interval = (start, end, lower, upper) => ({
-      type: 'and',
-      value: [
-        {
-          type: 'or',
-          value: [
-            condition('lessThan', start, upper),
-            { type: 'and', value: [condition('isNull', start), condition('lessThan', end, upper)] },
-          ],
-        },
-        {
-          type: 'or',
-          value: [
-            condition('greaterThanOrEquals', end, lower),
-            {
-              type: 'and',
-              value: [condition('isNull', end), condition('greaterThanOrEquals', start, lower)],
-            },
-          ],
-        },
-      ],
-    });
     const dateRanges = [];
 
     if (fields.dateStart && fields.dateEnd) {
@@ -122,6 +145,7 @@ define('calendar-plus:calendar-search', ['moment', 'calendar-plus:calendar-visib
       );
     } else {
       const field = fields.dateStart ? 'dateStart' : 'dateEnd';
+
       dateRanges.push({
         type: 'and',
         value: [
@@ -167,7 +191,9 @@ define('calendar-plus:calendar-search', ['moment', 'calendar-plus:calendar-visib
       ['attendeeLeadId', 'leads'],
     ]) {
       if (!filters[filter]) continue;
+
       if (!fields[relationship] && !links[relationship]) return null;
+
       where.push(condition('linkedWith', relationship, [filters[filter]]));
     }
 
@@ -175,26 +201,13 @@ define('calendar-plus:calendar-search', ['moment', 'calendar-plus:calendar-visib
       const statuses = filters.statusList.filter((status) =>
         fields.status?.options?.includes(status),
       );
+
       if (!statuses.length) return null;
+
       where.push(condition('in', 'status', statuses));
     }
 
-    const select = [
-      'id',
-      'name',
-      'dateStart',
-      'dateEnd',
-      'dateStartDate',
-      'dateEndDate',
-      'status',
-    ].filter((name) => ['id', 'name'].includes(name) || fields[name]);
-
-    if (fields.assignedUser || links.assignedUser)
-      select.push('assignedUserId', 'assignedUserName');
-
-    for (const relationship of ['assignedUsers', 'users', 'contacts', 'leads', 'collaborators']) {
-      if (fields[relationship]) select.push(`${relationship}Ids`, `${relationship}Names`);
-    }
+    const select = selectFields(fields, links);
 
     const options = getOptions(view);
 
@@ -207,6 +220,14 @@ define('calendar-plus:calendar-search', ['moment', 'calendar-plus:calendar-visib
       order: options.sortDirection,
     };
   };
+
+  const nextOffset = (response, query, offset) =>
+    response.list.length === query.maxSize &&
+    (response.total === -1 ||
+      response.total == null ||
+      offset + response.list.length < response.total)
+      ? offset + response.list.length
+      : null;
 
   const searchPage = async (view, filters, offsets = {}) => {
     const permitted = availableScopes(view);
@@ -221,22 +242,21 @@ define('calendar-plus:calendar-search', ['moment', 'calendar-plus:calendar-visib
     const worker = async () => {
       while (index < scopes.length) {
         const scope = scopes[index++];
+
         if (offsets[scope] === null) continue;
+
         const offset = offsets[scope] || 0;
         const query = buildQuery(view, scope, filters, offset);
+
         if (!query) continue;
 
         try {
           const response = await Espo.Ajax.getRequest(scope, query);
+
           if (!Array.isArray(response.list)) throw new Error('Invalid search response');
+
           results.push(...response.list.map((record) => ({ ...record, scope })));
-          nextOffsets[scope] =
-            response.list.length === query.maxSize &&
-            (response.total === -1 ||
-              response.total == null ||
-              offset + response.list.length < response.total)
-              ? offset + response.list.length
-              : null;
+          nextOffsets[scope] = nextOffset(response, query, offset);
         } catch (error) {
           errors.push(scope);
           nextOffsets[scope] = null;

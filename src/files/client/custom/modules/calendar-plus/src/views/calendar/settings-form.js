@@ -25,6 +25,7 @@ define('calendar-plus:views/calendar/settings-form', [
     defaults(routeMode, parent = {}) {
       const preferences = this.getPreferences();
       const stored = Definitions.viewSettings(preferences, routeMode);
+
       return {
         showInactiveUsers: stored.showInactiveUsers === true,
         showWeekends: stored.showWeekends !== false,
@@ -89,6 +90,7 @@ define('calendar-plus:views/calendar/settings-form', [
 
       const add = (name, label, Field = Bool, params = {}) => {
         this.settingNames.push(name);
+
         const sectionName =
           Object.keys(sectionFields).find((key) => sectionFields[key].includes(name)) || 'display';
         const section = sections.find((item) => item.name === sectionName);
@@ -176,27 +178,36 @@ define('calendar-plus:views/calendar/settings-form', [
         .map((section) => ({
           name: section.name,
           label: this.translate(section.label, 'labels', 'Calendar'),
-          rows: section.rows.reduce((rows, [field], index) => {
-            // Keep the tooltip switch separate from its two-column detail options.
-            const columnIndex = section.name === 'tooltips' ? index - 1 : index;
-
-            if (columnIndex < 0 || columnIndex % 2 === 0) rows.push([field, false]);
-            else rows[rows.length - 1][1] = field;
-
-            return rows;
-          }, []),
+          rows: this.sectionRows(section),
         }));
 
       return detailLayout;
     }
 
+    sectionRows(section) {
+      return section.rows.reduce((rows, [field], index) => {
+        // Keep the tooltip switch separate from its two-column detail options.
+        const columnIndex = section.name === 'tooltips' ? index - 1 : index;
+
+        if (columnIndex < 0 || columnIndex % 2 === 0) rows.push([field, false]);
+        else rows[rows.length - 1][1] = field;
+
+        return rows;
+      }, []);
+    }
+
     modesForField(name) {
       if (['visibleTimeStart', 'visibleTimeEnd'].includes(name))
         return ['agendaDay', 'agendaWeek', 'timeline'];
+
       if (['slotDuration', 'scrollHour'].includes(name)) return ['agendaDay', 'agendaWeek'];
+
       if (name === 'showGradient') return ['agendaWeek', 'month'];
+
       if (['dayBoundary', 'timelineRowHeight'].includes(name)) return ['timeline'];
+
       if (name === 'rememberHiddenPeople') return ['agendaDay', 'agendaWeek', 'month'];
+
       return ['agendaDay', 'agendaWeek', 'month', 'timeline'];
     }
 
@@ -208,6 +219,7 @@ define('calendar-plus:views/calendar/settings-form', [
       const visible = (modes) => ({
         visible: { conditionGroup: [{ type: 'in', attribute: 'mode', value: modes }] },
       });
+
       return {
         fields: Object.fromEntries(
           this.settingNames.map((name) => [
@@ -221,20 +233,22 @@ define('calendar-plus:views/calendar/settings-form', [
       };
     }
 
+    parseValue(name, value) {
+      if (['slotDuration', 'scrollHour'].includes(name)) return Number(value);
+
+      if (['visibleTimeStart', 'visibleTimeEnd'].includes(name)) return value?.trim();
+
+      if (['eventTextSize', 'dayBoundary', 'timelineRowHeight'].includes(name)) return value;
+
+      return value === true;
+    }
+
     values(data, mode) {
       data = { ...this.view.model.attributes, ...data };
+
       const settingNames = this.namesForMode(mode);
       const values = Object.fromEntries(
-        settingNames.map((name) => [
-          name,
-          ['slotDuration', 'scrollHour'].includes(name)
-            ? Number(data[name])
-            : ['visibleTimeStart', 'visibleTimeEnd'].includes(name)
-              ? data[name]?.trim()
-              : ['eventTextSize', 'dayBoundary', 'timelineRowHeight'].includes(name)
-                ? data[name]
-                : data[name] === true,
-        ]),
+        settingNames.map((name) => [name, this.parseValue(name, data[name])]),
       );
 
       if (
@@ -264,6 +278,7 @@ define('calendar-plus:views/calendar/settings-form', [
       })) {
         if (settingNames.includes(name) && !options.includes(values[name])) return;
       }
+
       return values;
     }
   };

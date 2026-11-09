@@ -20,9 +20,12 @@ define('calendar-plus:views/calendar/modals/search-options', [
         { name: 'save', label: 'Save', style: 'primary', onClick: () => this.actionSave() },
         { name: 'cancel', label: 'Cancel', onClick: () => this.close() },
       ];
+
       const current = Search.getOptions(this);
+
       this.model = new Model({ ...current, columns: [...current.columns] });
       this.model.name = 'CalendarSearchOptions';
+
       const label = (value) => this.translate(value, 'labels', 'Calendar');
       const columnLabels = {
         when: label('When'),
@@ -33,6 +36,7 @@ define('calendar-plus:views/calendar/modals/search-options', [
       const field = (name, title, Field, params) => ({
         view: new Field({ name, labelText: label(title), params }),
       });
+
       this.recordView = new Record({
         model: this.model,
         detailLayout: [
@@ -66,8 +70,11 @@ define('calendar-plus:views/calendar/modals/search-options', [
 
     async actionSave() {
       if (this.saving) return;
+
       const data = this.recordView.processFetch();
+
       if (this.recordView.validate()) return;
+
       if (
         !['date', 'title'].includes(data.sortBy) ||
         !['asc', 'desc'].includes(data.sortDirection) ||
@@ -75,6 +82,7 @@ define('calendar-plus:views/calendar/modals/search-options', [
         data.columns.some((column) => !Search.optionalColumns.includes(column))
       )
         return;
+
       const preferences = this.getPreferences();
       const previous = preferences.get('calendarPlusSearchSettings');
       const next = {
@@ -83,21 +91,27 @@ define('calendar-plus:views/calendar/modals/search-options', [
         sortBy: data.sortBy,
         sortDirection: data.sortDirection,
       };
+
       this.saving = true;
       this.disableButton('save');
+
       try {
         await preferences.save({ calendarPlusSearchSettings: next }, { patch: true, wait: true });
       } catch (error) {
         preferences.set('calendarPlusSearchSettings', previous);
+
         if (!this.optionsRemoved) {
           this.enableButton('save');
           Espo.Ui.error(this.translate('Could not save search options', 'messages', 'Calendar'));
         }
+
         return;
       } finally {
         this.saving = false;
       }
+
       if (this.optionsRemoved) return;
+
       this.options.onSave();
       this.close();
     }

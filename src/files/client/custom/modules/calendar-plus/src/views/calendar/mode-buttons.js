@@ -8,13 +8,16 @@ define('calendar-plus:views/calendar/mode-buttons', [
 
     events = {
       ...this.events,
+
       'click [data-action="printCalendar"]': function (event) {
         event.preventDefault();
         event.stopPropagation();
         void this.actionPrintCalendar();
       },
+
       'keydown [data-action="printCalendar"]': function (event) {
         if (event.key !== 'Enter' && event.key !== ' ') return;
+
         event.preventDefault();
         event.stopPropagation();
         void this.actionPrintCalendar();
@@ -23,8 +26,10 @@ define('calendar-plus:views/calendar/mode-buttons', [
 
     actionPrintCalendar() {
       const name = this.data().selectedModeLabel;
+
       this.calendarPrinter ||= new CalendarPrint(this.getCalendarParentView(), name);
       this.calendarPrinter.name = name;
+
       return this.calendarPrinter.run();
     }
 
@@ -39,6 +44,7 @@ define('calendar-plus:views/calendar/mode-buttons', [
             labelShort: this.translate(mode, 'modes', 'Calendar').slice(0, 2),
           },
       );
+
       list.push(
         ...core.filter(
           (item) => !primaryModes.includes(item.mode) && !item.mode.startsWith('view-'),

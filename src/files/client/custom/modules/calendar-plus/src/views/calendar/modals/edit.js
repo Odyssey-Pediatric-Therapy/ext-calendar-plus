@@ -29,13 +29,16 @@ define('calendar-plus:views/calendar/modals/edit', [
 
     afterRender() {
       super.afterRender();
+
       if (this.hasView?.('edit') !== false) this.bindVisibilityFields(this.getRecordView());
+
       this.updateVisibilityWarning();
     }
 
     bindVisibilityFields(record) {
       for (const field of record?.getFieldViewList?.() || []) {
         if (this.visibilityFields.has(field)) continue;
+
         this.visibilityFields.add(field);
         this.listenTo(field, 'change', this.visibilityFieldChanged);
       }
@@ -43,18 +46,23 @@ define('calendar-plus:views/calendar/modals/edit', [
 
     scheduleVisibilityWarning() {
       if (this.visibilityUpdateQueued) return;
+
       this.visibilityUpdateQueued = true;
+
       const model = this.visibilityModel;
 
       // Field widgets may update silently or return to a value already held by the model.
       // Wait for their handlers to finish, then read the actual form values.
       queueMicrotask(() => {
         this.visibilityUpdateQueued = false;
+
         if (this.visibilityModel !== model || this.isRemoved?.()) return;
+
         const record = this.hasView?.('edit') === false ? null : this.getRecordView();
         const attributes = model.getClonedAttributes();
 
         if (record?.model === model) Object.assign(attributes, record.fetch());
+
         this.updateVisibilityWarning(attributes);
       });
     }
@@ -62,6 +70,7 @@ define('calendar-plus:views/calendar/modals/edit', [
     warningFor(attributes) {
       const calendar = this.options.calendarView;
       const model = this.visibilityModel;
+
       if (!calendar || !model || !model.isNew()) return null;
 
       return Visibility.creationWarning(
@@ -73,6 +82,7 @@ define('calendar-plus:views/calendar/modals/edit', [
 
     updateVisibilityWarning(attributes) {
       const reason = this.warningFor(attributes);
+
       Visibility.renderWarning(this, reason);
 
       return reason;

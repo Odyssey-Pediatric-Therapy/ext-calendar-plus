@@ -6,30 +6,48 @@ require_once dirname(__DIR__, 7) . '/bootstrap.php';
 
 use Espo\Core\Acl;
 use Espo\Core\Api\Request;
-use Espo\Core\Exceptions\Forbidden;
 use Espo\Core\Exceptions\BadRequest;
+use Espo\Core\Exceptions\Forbidden;
 use Espo\Entities\User;
+use Espo\Modules\CalendarPlus\Api\Calendar\TimelineUsers;
+use Espo\Modules\CalendarPlus\Tools\Calendar\UserResolver;
 use Espo\ORM\EntityCollection;
 use Espo\ORM\EntityManager;
+use Espo\ORM\Executor\QueryExecutor;
+use Espo\ORM\QueryBuilder;
+use PDOStatement;
 use Espo\ORM\Repository\RDBRepository;
 use Espo\ORM\Repository\RDBSelectBuilder;
-use Espo\Modules\CalendarPlus\Api\Calendar\TimelineUsers;
+use PHPUnit\Framework\TestCase;
 
-final class TimelineUsersTest extends \PHPUnit\Framework\TestCase
+final class MembershipStatement extends PDOStatement
 {
-  private function user(string $id, string $name): User
+  private int $index = 0;
+
+  public function __construct(private array $rows)
+  {
+  }
+
+  public function fetch(int $mode = \PDO::FETCH_DEFAULT, int $cursorOrientation = \PDO::FETCH_ORI_NEXT, int $cursorOffset = 0): mixed
+  {
+    return $this->rows[$this->index++] ?? false;
+  }
+}
+
+final class TimelineUsersTest extends TestCase
+{
+  private function user(string $id, string $name, ?string $team = null, string $type = 'regular'): User
   {
     $user = $this->createMock(User::class);
     $user->method('getId')->willReturn($id);
-    $user->method('get')->with('name')->willReturn($name);
-    return $user;
-  }
+    $user->method('getType')->willReturn($type);
+    $user->method('get')->willReturnCallback(static fn ($field) => match ($field) {
+      'name' => $name,
+      'calendarPlusTeamId' => $team,
+      default => null,
+    });
 
-  private function request(array $data): Request
-  {
-    $request = $this->createMock(Request::class);
-    $request->method('getParsedBody')->willReturn((object) $data);
-    return $request;
+    return $user;
   }
 
   private function acl(string $level = 'all'): Acl
@@ -37,158 +55,173 @@ final class TimelineUsersTest extends \PHPUnit\Framework\TestCase
     $acl = $this->createMock(Acl::class);
     $acl->method('check')->with('Calendar')->willReturn(true);
     $acl->method('getPermissionLevel')->with('userCalendar')->willReturn($level);
+
     return $acl;
   }
 
-  public function testTeamAndPeoplePreserveStoredOrderAndAreDeduplicatedAndPermissionFiltered(): void
+  private function manager(array $explicit = [], array $memberships = [], ?array &$queries = null): EntityManager
   {
-    $ann = $this->user('ann', 'Ann');
-    $bob = $this->user('bob', 'Bob');
-    $hidden = $this->user('hidden', 'Hidden');
     $builder = $this->createMock(RDBSelectBuilder::class);
-    $builder->method('join')->willReturnSelf();
-    $builder->method('where')->willReturnCallback(function ($where) use ($builder) {
-      self::assertSame(['teams.id' => ['team1'], 'isActive' => true], $where);
-      return $builder;
-    });
-    $builder->method('find')->willReturn(new EntityCollection([$bob, $ann, $hidden]));
-    $explicit = $this->createMock(RDBSelectBuilder::class);
-    $explicit->method('find')->willReturn(new EntityCollection([$bob]));
-    $repo = $this->createMock(RDBRepository::class);
-    $repo->method('distinct')->willReturn($builder);
-    $repo->method('where')->with(['id' => ['bob'], 'isActive' => true])->willReturn($explicit);
-    $manager = $this->createMock(EntityManager::class);
-    $manager->method('getRDBRepositoryByClass')->with(User::class)->willReturn($repo);
-    $acl = $this->acl();
-    $acl->method('checkUserPermission')->willReturnCallback(fn($user, $permission) => $user !== $hidden && $permission === 'userCalendar');
-    $action = new TimelineUsers($manager, $acl, $this->user('me', 'Me'));
-    $response = $action->process($this->request(['userIdList' => ['bob'], 'teamIdList' => ['team1']]));
-    self::assertSame(['users' => [['id' => 'bob', 'name' => 'Bob'], ['id' => 'ann', 'name' => 'Ann']]],
-      json_decode((string) $response->getBody(), true));
-  }
-
-  public function testStoredUserOrderWinsOverDatabaseAndNameOrder(): void
-  {
-    $ann = $this->user('ann', 'Ann');
-    $bob = $this->user('bob', 'Bob');
-    $builder = $this->createMock(RDBSelectBuilder::class);
-    $builder->method('find')->willReturn(new EntityCollection([$ann, $bob]));
-    $repo = $this->createMock(RDBRepository::class);
-    $repo->method('where')->willReturn($builder);
-    $manager = $this->createMock(EntityManager::class);
-    $manager->method('getRDBRepositoryByClass')->willReturn($repo);
-    $acl = $this->acl();
-    $acl->method('checkUserPermission')->willReturn(true);
-    $response = (new TimelineUsers($manager, $acl, $this->user('me', 'Me')))->process($this->request([
-      'userIdList' => ['bob', 'missing', 'ann', 'bob'],
-    ]));
-    self::assertSame(['users' => [['id' => 'bob', 'name' => 'Bob'], ['id' => 'ann', 'name' => 'Ann']]],
-      json_decode((string) $response->getBody(), true));
-  }
-
-  public function testTeamsExpandInStoredOrderWithAlphabeticalMembersAndNoDuplicates(): void
-  {
-    $zoe = $this->user('zoe', 'Zoe');
-    $bob = $this->user('bob', 'Bob');
-    $ann = $this->user('ann', 'Ann');
-    $builder = $this->createMock(RDBSelectBuilder::class);
-    $builder->method('join')->willReturnSelf();
-    $queries = [];
+    $builder->method('distinct')->willReturnSelf();
+    $builder->method('limit')->with(0, 301)->willReturnSelf();
+    $builder->method('sth')->willReturnSelf();
     $builder->method('where')->willReturnCallback(function ($where) use ($builder, &$queries) {
       $queries[] = $where;
       return $builder;
     });
-    $builder->method('find')->willReturnOnConsecutiveCalls(
-      new EntityCollection([$zoe, $bob]), new EntityCollection([$ann, $bob]));
-    $repo = $this->createMock(RDBRepository::class);
-    $repo->method('distinct')->willReturn($builder);
+    $rows = [];
+    $rowCache = [];
+    $candidates = [];
+    foreach ($memberships as $user) {
+      $key = spl_object_id($user);
+      $row = $rowCache[$key] ??= ['id' => $user->getId(), 'teamId' => $user->get('calendarPlusTeamId')];
+      $rows[] = $row;
+      $candidates[$row['id']] = $user;
+    }
+    $builder->method('find')->willReturn(new EntityCollection([...$explicit, ...array_values($candidates)]));
+    $repository = $this->createMock(RDBRepository::class);
+    $repository->method('where')->willReturn($builder);
+    $repository->method('leftJoin')->with('teams')->willReturn($builder);
     $manager = $this->createMock(EntityManager::class);
-    $manager->method('getRDBRepositoryByClass')->willReturn($repo);
+    $manager->method('getRDBRepositoryByClass')->with(User::class)->willReturn($repository);
+    $manager->method('getQueryBuilder')->willReturn(new QueryBuilder());
+    $statement = new MembershipStatement($rows);
+    $executor = $this->createMock(QueryExecutor::class);
+    $executor->method('execute')->willReturnCallback(function ($query) use ($statement, &$queries) {
+      self::assertNull($query->getLimit());
+      $queries[] = $query->getRaw();
+      return $statement;
+    });
+    $manager->method('getQueryExecutor')->willReturn($executor);
+
+    return $manager;
+  }
+
+  private function resolve(UserResolver $resolver, array $data): array
+  {
+    $request = $this->createMock(Request::class);
+    $request->method('getParsedBody')->willReturn((object) $data);
+    $response = (new TimelineUsers($resolver))->process($request);
+
+    return json_decode((string) $response->getBody(), true)['users'];
+  }
+
+  public function testStoredOrderAndPermissionsArePreservedWithOneQueryForAllTeams(): void
+  {
+    $queries = [];
+    $manager = $this->manager(
+      [$this->user('ann', 'Ann'), $this->user('zoe', 'Zoe')],
+      [
+        $this->user('ann', 'Ann', 'team-a'),
+        $this->user('bob', 'Bob', 'team-b'),
+        $this->user('zoe', 'Zoe', 'team-b'),
+        $this->user('hidden', 'Hidden', 'team-b'),
+        $this->user('bob', 'Bob', 'team-a'),
+        $this->user('hidden', 'Hidden', 'team-a'),
+      ],
+      $queries,
+    );
+    $checks = [];
+    $acl = $this->acl();
+    $acl->method('checkUserPermission')->willReturnCallback(function ($user) use (&$checks) {
+      $checks[] = $user->getId();
+      return $user->getId() !== 'hidden';
+    });
+    $resolver = new UserResolver($manager, $acl, $this->user('me', 'Me'));
+    $users = $this->resolve($resolver, [
+      'userIdList' => ['zoe', 'missing', 'ann', 'zoe'],
+      'teamIdList' => ['team-b', 'team-a', 'team-b'],
+    ]);
+    self::assertSame(['zoe', 'ann', 'bob'], array_column($users, 'id'));
+    self::assertSame(['ann', 'zoe', 'bob', 'hidden'], $checks);
+    self::assertCount(2, $queries);
+    self::assertSame(['zoe', 'missing', 'ann'], $queries[0]['OR'][0]['id']);
+    self::assertSame(['team-b', 'team-a'], $queries[0]['OR'][1]['teams.id']);
+    self::assertSame(['regular', 'admin', 'super-admin'], $queries[0]['type']);
+    self::assertTrue($queries[0]['isActive']);
+  }
+
+  public function testTeamOrderAndAlphabeticalMemberOrderAreIndependentOfDatabaseOrder(): void
+  {
+    $manager = $this->manager([], [
+      $this->user('ann', 'Ann', 'team-a'),
+      $this->user('zoe', 'Zoe', 'team-b'),
+      $this->user('bob', 'Bob', 'team-b'),
+      $this->user('bob', 'Bob', 'team-a'),
+    ]);
     $acl = $this->acl();
     $acl->method('checkUserPermission')->willReturn(true);
-    $response = (new TimelineUsers($manager, $acl, $this->user('me', 'Me')))->process($this->request([
-      'teamIdList' => ['team-b', 'team-a', 'team-b'],
-    ]));
-    self::assertSame([
-      ['teams.id' => ['team-b'], 'isActive' => true],
-      ['teams.id' => ['team-a'], 'isActive' => true],
-    ], $queries);
-    self::assertSame(['bob', 'zoe', 'ann'], array_column(json_decode((string) $response->getBody(), true)['users'], 'id'));
+    $users = $this->resolve(new UserResolver($manager, $acl, $this->user('me', 'Me')), [
+      'teamIdList' => ['team-b', 'team-a'],
+    ]);
+    self::assertSame(['bob', 'zoe', 'ann'], array_column($users, 'id'));
+  }
+
+  public function testInactiveOptionDoesNotIncludePortalApiOrSystemUsers(): void
+  {
+    $queries = [];
+    $manager = $this->manager([
+      $this->user('former', 'Former member'),
+      $this->user('api', 'Integration', null, 'api'),
+      $this->user('portal', 'Portal', null, 'portal'),
+      $this->user('system', 'System', null, 'system'),
+      $this->user('admin', 'Administrator', null, 'admin'),
+    ], [], $queries);
+    $acl = $this->acl();
+    $acl->expects(self::exactly(2))->method('checkUserPermission')->willReturn(true);
+    $users = $this->resolve(new UserResolver($manager, $acl, $this->user('me', 'Me')), [
+      'userIdList' => ['former', 'api', 'portal', 'system', 'admin'],
+      'includeInactiveUsers' => true,
+    ]);
+    self::assertSame(['former', 'admin'], array_column($users, 'id'));
+    self::assertArrayNotHasKey('isActive', $queries[0]);
+  }
+
+  public function testEmptySelectionNeverQueriesEveryone(): void
+  {
+    $manager = $this->createMock(EntityManager::class);
+    $manager->expects(self::never())->method('getRDBRepositoryByClass');
+    self::assertSame([], $this->resolve(new UserResolver($manager, $this->acl(), $this->user('me', 'Me')), []));
   }
 
   public function testCalendarPermissionNoRejectsResolution(): void
   {
     $this->expectException(Forbidden::class);
-    (new TimelineUsers($this->createMock(EntityManager::class), $this->acl('no'), $this->user('me', 'Me')))
-      ->process($this->request(['userIdList' => ['other']]));
+    (new UserResolver($this->createMock(EntityManager::class), $this->acl('no'), $this->user('me', 'Me')))->resolve(['other']);
   }
 
-  public function testTeamPermissionCannotResolveOtherTeams(): void
+  public function testTeamPermissionCannotResolveUnrelatedTeamsEvenWhenInactiveUsersAreIncluded(): void
   {
     $user = $this->user('me', 'Me');
     $user->method('getLinkMultipleIdList')->with('teams')->willReturn(['my-team']);
     $this->expectException(Forbidden::class);
-    (new TimelineUsers($this->createMock(EntityManager::class), $this->acl('team'), $user))
-      ->process($this->request(['teamIdList' => ['other-team']]));
+    (new UserResolver($this->createMock(EntityManager::class), $this->acl('team'), $user))->resolve([], ['other-team'], true);
   }
 
-  public function testEmptySelectionNeverFallsBackToEveryone(): void
+  public function testMalformedIdsAndInactiveOptionAreRejectedBeforeQuerying(): void
   {
     $manager = $this->createMock(EntityManager::class);
     $manager->expects(self::never())->method('getRDBRepositoryByClass');
-    $response = (new TimelineUsers($manager, $this->acl(), $this->user('me', 'Me')))
-      ->process($this->request([]));
-    self::assertSame(['users' => []], json_decode((string) $response->getBody(), true));
+    $resolver = new UserResolver($manager, $this->acl(), $this->user('me', 'Me'));
+    foreach ([['not-array', [], false], [[1], [], false], [[], [''], false], [[], [], 'true'], [array_fill(0, 301, 'user'), [], false], [[], array_fill(0, 101, 'team'), false]] as $arguments) {
+      try {
+        $resolver->resolve(...$arguments);
+        self::fail('Malformed selection was accepted.');
+      } catch (BadRequest) {
+      }
+    }
   }
 
-  public function testMalformedSelectionIsRejectedBeforeQuerying(): void
+  public function testOversizedTeamExpansionFailsInsteadOfReturningPartialMembership(): void
   {
-    $this->expectException(BadRequest::class);
-    (new TimelineUsers($this->createMock(EntityManager::class), $this->acl(), $this->user('me', 'Me')))
-      ->process($this->request(['teamIdList' => 'not-an-array']));
-  }
-
-  public function testInactiveMembersCanBeResolvedWithoutBypassingCalendarPermissions(): void
-  {
-    $ann = $this->user('ann', 'Ann');
-    $former = $this->user('former', 'Former member');
-    $denied = $this->user('denied', 'Denied');
-    $teamBuilder = $this->createMock(RDBSelectBuilder::class);
-    $teamBuilder->method('join')->willReturnSelf();
-    $teamBuilder->method('where')->with(['teams.id' => ['team1']])->willReturnSelf();
-    $teamBuilder->method('find')->willReturn(new EntityCollection([$ann, $former, $denied]));
-    $explicitBuilder = $this->createMock(RDBSelectBuilder::class);
-    $explicitBuilder->method('find')->willReturn(new EntityCollection([$former]));
-    $repo = $this->createMock(RDBRepository::class);
-    $repo->method('distinct')->willReturn($teamBuilder);
-    $repo->method('where')->with(['id' => ['former']])->willReturn($explicitBuilder);
-    $manager = $this->createMock(EntityManager::class);
-    $manager->method('getRDBRepositoryByClass')->willReturn($repo);
+    $members = [];
+    for ($i = 0; $i < 301; $i++) {
+      $members[] = $this->user('user-' . $i, 'User ' . $i, 'team');
+    }
+    $manager = $this->manager([], $members);
     $acl = $this->acl();
-    $acl->method('checkUserPermission')->willReturnCallback(fn($user) => $user !== $denied);
-    $response = (new TimelineUsers($manager, $acl, $this->user('me', 'Me')))->process($this->request([
-      'teamIdList' => ['team1'], 'userIdList' => ['former'], 'includeInactiveUsers' => true,
-    ]));
-    self::assertSame(['users' => [['id' => 'former', 'name' => 'Former member'], ['id' => 'ann', 'name' => 'Ann']]],
-      json_decode((string) $response->getBody(), true));
-  }
-
-  public function testMalformedInactiveOptionIsRejectedBeforeQuerying(): void
-  {
-    $manager = $this->createMock(EntityManager::class);
-    $manager->expects(self::never())->method('getRDBRepositoryByClass');
+    $acl->expects(self::exactly(300))->method('checkUserPermission')->willReturn(true);
     $this->expectException(BadRequest::class);
-    (new TimelineUsers($manager, $this->acl(), $this->user('me', 'Me')))->process($this->request([
-      'userIdList' => ['former'], 'includeInactiveUsers' => 'true',
-    ]));
-  }
-
-  public function testIncludingInactiveUsersDoesNotGrantAccessToOtherTeams(): void
-  {
-    $user = $this->user('me', 'Me');
-    $user->method('getLinkMultipleIdList')->willReturn(['my-team']);
-    $this->expectException(Forbidden::class);
-    (new TimelineUsers($this->createMock(EntityManager::class), $this->acl('team'), $user))
-      ->process($this->request(['teamIdList' => ['other-team'], 'includeInactiveUsers' => true]));
+    (new UserResolver($manager, $acl, $this->user('me', 'Me')))->resolve([], ['team']);
   }
 }

@@ -46,6 +46,7 @@ define('calendar-plus:views/calendar/calendar-page', [
 
     mountTimeline(item) {
       const mode = item?.routeMode || (this.personalTimeline ? 'timeline-personal' : 'timeline');
+
       this.mode = mode;
       this.createView(
         'calendar',
@@ -58,10 +59,12 @@ define('calendar-plus:views/calendar/calendar-page', [
           calendarType: item ? `saved-${item.id}` : this.personalTimeline ? 'single' : 'shared',
           calendarItem: item,
           fullSelector: '#main > .calendar-container',
+
           onSave: () => this.onSave(),
         },
         (view) => {
           let initial = true;
+
           this.listenTo(view, 'view', (date, selectedMode) => {
             this.date = date;
             this.mode = selectedMode;
@@ -117,6 +120,7 @@ define('calendar-plus:views/calendar/calendar-page', [
       const view = new CalendarModal({
         calendar: item,
         calendarView: this.getCalendarView(),
+
         onSave: (saved) => {
           this.mode = saved ? saved.routeMode : 'agendaWeek';
           this.getStorage().set('state', 'calendarMode', this.mode);
@@ -129,6 +133,7 @@ define('calendar-plus:views/calendar/calendar-page', [
           });
         },
       });
+
       await this.assignView('modal', view);
       await view.render();
     }

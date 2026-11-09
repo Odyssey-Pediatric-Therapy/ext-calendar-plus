@@ -5,7 +5,7 @@
   "scripts": {
     "sa": "php site/vendor/bin/phpstan analyse --configuration phpstan.neon",
     "unit-tests": "php site/vendor/bin/phpunit --configuration phpunit.xml",
-    "integration-tests": "node build --copy && node build --composer-install && cd site && php vendor/bin/phpunit tests/integration/Espo/Modules/CalendarPlus",
+    "integration-tests": "npm run test:integration",
     "copy": "node build --copy",
     "composer-install": "node build --composer-install",
     "sync": "node build --copy && node build --composer-install && npm run clear-cache",
@@ -15,7 +15,14 @@
     "all": "node build --all",
     "prepare-test": "node build --prepare-test",
     "test:client": "node --test tests/client/*.test.js",
-    "test": "npm run test:client && npm run unit-tests"
+    "test": "npm run test:client && npm run unit-tests",
+    "test:prepare": "node tests/support/prepare.mjs",
+    "test:seed": "php tests/support/seed.php",
+    "test:serve": "node tests/support/serve.mjs",
+    "test:browsers": "node tests/support/install-browser.mjs",
+    "test:integration": "npm run test:prepare && playwright test --project=api",
+    "test:e2e": "npm run test:prepare && playwright test --project=chromium --project=mobile",
+    "test:system": "npm run test:prepare && playwright test"
   },
   "type": "module",
   "author": "Anthony Andriano",
@@ -28,5 +35,8 @@
   "engines": {
     "npm": ">=8",
     "node": ">=18"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.0"
   }
 }

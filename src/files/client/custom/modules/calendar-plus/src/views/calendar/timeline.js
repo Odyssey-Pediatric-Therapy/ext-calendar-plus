@@ -15,6 +15,7 @@ define('calendar-plus:views/calendar/timeline', [
 
     events = {
       ...this.events,
+
       'click [data-action="searchCalendar"]': function (event) {
         event.preventDefault();
         this.actionSearchCalendar();
@@ -23,6 +24,7 @@ define('calendar-plus:views/calendar/timeline', [
 
     afterRender() {
       const result = super.afterRender();
+
       ActiveCalendar.register(this);
 
       return result;
@@ -61,8 +63,10 @@ define('calendar-plus:views/calendar/timeline', [
 
     applyViewSettings() {
       const settings = Definitions.viewSettings(this.getPreferences(), this.mode || 'timeline');
+
       this.eventTooltip.refresh();
       Definitions.applyAppearance(this);
+
       const appearance = JSON.stringify([settings.eventTextSize, settings.timelineRowHeight]);
 
       if (this.timeline && this.timelineAppearance !== appearance) {
@@ -83,6 +87,18 @@ define('calendar-plus:views/calendar/timeline', [
       )
         return;
 
+      const hiddenDates = this.hiddenDatesForRange(showWeekends, range);
+
+      const apply = hiddenDates.length || this.timelineHasHiddenDates;
+
+      this.settingsTimeline = this.timeline;
+      this.timelineSettingsSignature = signature;
+      this.timelineHasHiddenDates = !!hiddenDates.length;
+
+      if (apply) this.timeline.setOptions({ hiddenDates });
+    }
+
+    hiddenDatesForRange(showWeekends, range) {
       const hiddenDates = [];
 
       if (!showWeekends)
@@ -95,19 +111,17 @@ define('calendar-plus:views/calendar/timeline', [
       if (range.start !== '00:00:00' || range.end !== '24:00:00') {
         // Anchor the overnight gap to a reference day; vis repeats it daily in local time.
         const start = new Date(WEEKEND_START_REFERENCE.replace(' ', 'T'));
+
         start.setHours(Number(range.end.slice(0, 2)), Number(range.end.slice(3, 5)), 0, 0);
+
         const end = new Date(WEEKEND_START_REFERENCE.replace(' ', 'T'));
+
         end.setDate(end.getDate() + 1);
         end.setHours(Number(range.start.slice(0, 2)), Number(range.start.slice(3, 5)), 0, 0);
         hiddenDates.push({ start, end, repeat: 'daily' });
       }
 
-      const apply = hiddenDates.length || this.timelineHasHiddenDates;
-      this.settingsTimeline = this.timeline;
-      this.timelineSettingsSignature = signature;
-      this.timelineHasHiddenDates = !!hiddenDates.length;
-
-      if (apply) this.timeline.setOptions({ hiddenDates });
+      return hiddenDates;
     }
 
     actionSearchCalendar() {
@@ -124,6 +138,7 @@ define('calendar-plus:views/calendar/timeline', [
     showSearchResult(record) {
       this.searchResult = record;
       this.applyViewSettings();
+
       const date = record.dateStartDate || record.dateStart || record.dateEndDate || record.dateEnd;
       const preview = this.includeSearchResult([])[0];
       const target = preview?.start
@@ -131,6 +146,7 @@ define('calendar-plus:views/calendar/timeline', [
         : record.dateStartDate || record.dateEndDate
           ? moment.tz(date, 'YYYY-MM-DD', this.getDateTime().getTimeZone())
           : this.getDateTime().toMoment(date);
+
       this.timeline.moveTo(target.toDate(), { animation: false });
       this.actionRefresh();
       this.syncTimelineTooltips();
@@ -138,6 +154,7 @@ define('calendar-plus:views/calendar/timeline', [
 
     includeSearchResult(events) {
       if (!this.searchResult?.calendarUserIds?.length) return events;
+
       const result = [...events];
 
       for (const userId of this.searchResult.calendarUserIds) {
@@ -145,7 +162,9 @@ define('calendar-plus:views/calendar/timeline', [
           result.some((event) => Definitions.isSearchResult(this, event) && event.group === userId)
         )
           continue;
+
         const event = this.convertEvent({ ...this.searchResult, userId });
+
         if (event) result.push(event);
       }
 
@@ -155,6 +174,7 @@ define('calendar-plus:views/calendar/timeline', [
     actionToday() {
       this.searchResult = null;
       this.applyViewSettings();
+
       return super.actionToday();
     }
 
@@ -324,12 +344,14 @@ define('calendar-plus:views/calendar/timeline', [
       if (!root) return;
 
       const elements = new Set(root.querySelectorAll('.vis-item[data-id]'));
+
       for (const element of this.eventAppearances.keys()) {
         if (!elements.has(element) || !this.tooltipEvents.has(element.getAttribute('data-id'))) {
           this.eventTooltip.detach(element);
           this.eventAppearances.delete(element);
         }
       }
+
       for (const element of elements) {
         const event = this.tooltipEvents.get(element.getAttribute('data-id'));
 
@@ -348,13 +370,45 @@ define('calendar-plus:views/calendar/timeline', [
       return super.runFetch();
     }
 
+    applyTimelineEventLayout(events) {
+      if (this.timeline) {
+        this.applyViewSettings();
+
+        const isNew = this.tooltipTimeline !== this.timeline;
+        const configuredGap = this.getConfig().get('calendarPlusTimelineEventGap');
+        const spacing = Definitions.viewSettings(
+          this.getPreferences(),
+          this.mode || 'timeline',
+        ).timelineRowHeight;
+        const vertical = spacing === 'compact' ? 4 : spacing === 'spacious' ? 22 : 12;
+        const gap = Number.isFinite(configuredGap)
+          ? Math.max(0, Math.min(100, Math.round(configuredGap)))
+          : 0;
+
+        if (isNew || gap !== this.timelineEventGap || vertical !== this.timelineVerticalGap) {
+          this.timelineEventGap = gap;
+          this.timelineVerticalGap = vertical;
+          this.timeline.setOptions({ margin: { item: { horizontal: gap, vertical }, axis: 6 } });
+          // Margin changes alone do not invalidate vis's existing row assignments.
+          this.timeline.setItems(events);
+        }
+
+        if (isNew) {
+          this.tooltipTimeline = this.timeline;
+          this.timeline.on('changed', () => this.syncTimelineTooltips());
+        }
+      }
+    }
+
     async fetchEvents(from, to, callback) {
       this.eventTooltip.refresh();
       this.tooltipEvents.clear();
+
       const revision = (this.fetchRevision = (this.fetchRevision || 0) + 1);
 
       const deliver = async (events) => {
         events = this.includeSearchResult(events);
+
         if (Definitions.shouldFilterEvents(this, events)) {
           events = await Definitions.filterEvents(this, events);
         }
@@ -363,32 +417,7 @@ define('calendar-plus:views/calendar/timeline', [
 
         callback(events);
 
-        if (this.timeline) {
-          this.applyViewSettings();
-          const isNew = this.tooltipTimeline !== this.timeline;
-          const configuredGap = this.getConfig().get('calendarPlusTimelineEventGap');
-          const spacing = Definitions.viewSettings(
-            this.getPreferences(),
-            this.mode || 'timeline',
-          ).timelineRowHeight;
-          const vertical = spacing === 'compact' ? 4 : spacing === 'spacious' ? 22 : 12;
-          const gap = Number.isFinite(configuredGap)
-            ? Math.max(0, Math.min(100, Math.round(configuredGap)))
-            : 0;
-
-          if (isNew || gap !== this.timelineEventGap || vertical !== this.timelineVerticalGap) {
-            this.timelineEventGap = gap;
-            this.timelineVerticalGap = vertical;
-            this.timeline.setOptions({ margin: { item: { horizontal: gap, vertical }, axis: 6 } });
-            // Margin changes alone do not invalidate vis's existing row assignments.
-            this.timeline.setItems(events);
-          }
-
-          if (isNew) {
-            this.tooltipTimeline = this.timeline;
-            this.timeline.on('changed', () => this.syncTimelineTooltips());
-          }
-        }
+        this.applyTimelineEventLayout(events);
 
         this.syncTimelineTooltips();
         this.$el

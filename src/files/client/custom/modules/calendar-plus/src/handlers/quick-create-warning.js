@@ -10,10 +10,15 @@ define('calendar-plus:handlers/quick-create-warning', [
 
     process() {
       const view = this.view;
+
       if (view.options.calendarPlusVisibilityWarningHandled || !view.model.isNew()) return;
+
       if ((view.options.type || view.type) !== 'editSmall') return;
+
       const calendar = ActiveCalendar.find();
+
       if (!calendar || !calendar.scopeList.includes(view.model.entityType)) return;
+
       this.calendar = calendar;
 
       view.listenTo(view.model, 'change', () => this.update());
@@ -27,14 +32,18 @@ define('calendar-plus:handlers/quick-create-warning', [
       });
       view.on('after:save', () => {
         if (!this.savingNew) return;
+
         this.savingNew = false;
+
         const reason = this.saveReason;
 
         // The native Quick Add modal announces success after the record save resolves.
         // Show our notice afterward so it is not replaced by that announcement.
         setTimeout(() => {
           if (ActiveCalendar.find() !== calendar) return;
+
           calendar.actionRefresh();
+
           if (reason)
             Espo.Ui.notify(
               view.translate(`${reason} after save`, 'messages', 'Calendar'),
@@ -52,6 +61,7 @@ define('calendar-plus:handlers/quick-create-warning', [
     bindFields() {
       for (const field of this.view.getFieldViewList()) {
         if (this.fields.has(field)) continue;
+
         this.fields.add(field);
         this.view.listenTo(field, 'change', () => this.scheduleUpdate());
       }
@@ -59,9 +69,11 @@ define('calendar-plus:handlers/quick-create-warning', [
 
     scheduleUpdate() {
       if (this.updateQueued) return;
+
       this.updateQueued = true;
       queueMicrotask(() => {
         this.updateQueued = false;
+
         if (!this.view.isRemoved()) this.update(this.formAttributes());
       });
     }
@@ -76,6 +88,7 @@ define('calendar-plus:handlers/quick-create-warning', [
               attributes || view.model.getClonedAttributes(),
             )
           : null;
+
       Visibility.renderWarning(view, reason);
 
       return reason;
