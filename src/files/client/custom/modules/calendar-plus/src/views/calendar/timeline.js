@@ -433,12 +433,10 @@ define('calendar-plus:views/calendar/timeline', [
             this.getPreferences(),
             this.mode || item.routeMode || 'timeline',
           );
-          const data = await Espo.Ajax.postRequest('CalendarPlus/Users', {
-            ...Definitions.membershipSelection(item, includeInactive),
-            ...(includeInactive && item.membershipMode !== 'static'
-              ? { includeInactiveUsers: true }
-              : {}),
-          });
+          const data = await Espo.Ajax.postRequest(
+            'CalendarPlus/Users',
+            Definitions.membershipSelection(item, includeInactive),
+          );
 
           if (this.removed || revision !== this.fetchRevision) return;
 

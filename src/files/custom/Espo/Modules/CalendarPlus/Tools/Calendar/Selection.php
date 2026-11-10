@@ -14,7 +14,7 @@ final class Selection
     return is_string($id) && $id !== '' && strlen($id) <= 100;
   }
 
-  /** @return string[] */
+  /** @return list<string> */
   public static function ids(mixed $value, int $limit = self::MAX_USERS): array
   {
     if (!is_array($value) || !array_is_list($value) || count($value) > $limit) {
@@ -30,7 +30,7 @@ final class Selection
     return array_values(array_unique($value));
   }
 
-  /** @return string[] */
+  /** @return list<string> */
   public static function inactiveTeams(mixed $columns): array
   {
     if ($columns === []) {

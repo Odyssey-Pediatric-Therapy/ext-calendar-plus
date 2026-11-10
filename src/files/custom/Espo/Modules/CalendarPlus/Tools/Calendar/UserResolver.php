@@ -21,91 +21,22 @@ class UserResolver
   ) {
   }
 
-  /** @return array<int, array{id: string, name: ?string}> */
-  public function resolve(
-    mixed $userIds = [],
-    mixed $teamIds = [],
-    mixed $includeInactive = false,
-    mixed $teamColumns = [],
-    mixed $inactiveUserIds = [],
-  ): array {
-    return $this->resolveSelection($userIds, $teamIds, $includeInactive, $teamColumns, $inactiveUserIds)['users'];
-  }
-
   /** @return array{users: list<array{id: string, name: ?string}>, teamUserIdLists: array<string, list<string>>} */
-  public function resolveSelection(
-    mixed $userIds = [],
-    mixed $teamIds = [],
-    mixed $includeInactive = false,
-    mixed $teamColumns = [],
-    mixed $inactiveUserIds = [],
-  ): array {
-    if (!$this->acl->check('Calendar') || $this->acl->getPermissionLevel('userCalendar') === 'no') {
-      throw new Forbidden();
-    }
-
-    $userIds = Selection::ids($userIds);
-    $teamIds = Selection::ids($teamIds, Selection::MAX_TEAMS);
-    $inactiveTeams = array_intersect(Selection::inactiveTeams($teamColumns), $teamIds);
-    $inactiveUserIds = Selection::ids($inactiveUserIds);
-
-    if (array_diff($inactiveUserIds, $userIds)) {
-      throw new BadRequest('Inactive user overrides must be part of the selected user list.');
-    }
-
-    if (!is_bool($includeInactive)) {
-      throw new BadRequest('Invalid inactive user option.');
-    }
-
-    if (
-      $this->acl->getPermissionLevel('userCalendar') === 'team' &&
-      array_diff($teamIds, $this->user->getLinkMultipleIdList('teams'))
-    ) {
-      throw new Forbidden();
-    }
+  public function resolve(UserSelection $selection): array
+  {
+    $this->checkAccess($selection);
+    $userIds = $selection->userIds;
+    $teamIds = $selection->teamIds;
 
     if (!$userIds && !$teamIds) {
       return ['users' => [], 'teamUserIdLists' => []];
     }
 
-    $filter = ['type' => self::USER_TYPES];
-
-    $needsInactive = $includeInactive || $inactiveTeams || $inactiveUserIds;
-
-    if (!$needsInactive) {
-      $filter['isActive'] = true;
-    }
-
-    $repository = $this->entityManager->getRDBRepositoryByClass(User::class);
     $permissionCache = [];
     $eligible = [];
     $active = [];
-    $conditions = [];
 
-    if ($userIds) {
-      $conditions[] = ['id' => $userIds, ...($needsInactive && !$includeInactive ? ['isActive' => true] : [])];
-
-      if ($inactiveUserIds) {
-        $conditions[] = ['id' => $inactiveUserIds];
-      }
-    }
-
-    if ($teamIds) {
-      $conditions[] = ['teams.id' => $teamIds, ...($needsInactive ? ['isActive' => true] : [])];
-
-      if ($inactiveTeams) {
-        $conditions[] = ['teams.id' => array_values($inactiveTeams)];
-      }
-    }
-
-    $query = $teamIds ? $repository->leftJoin('teams')->distinct() : $repository->where([]);
-    $candidates = $query
-      ->where(['OR' => $conditions, ...$filter])
-      ->limit(0, Selection::MAX_USERS + 1)
-      ->sth()
-      ->find();
-
-    foreach ($candidates as $user) {
+    foreach ($this->findCandidates($selection) as $user) {
       if ($this->canInclude($user, $permissionCache)) {
         $eligible[$user->getId()] = $this->summary($user);
         $active[$user->getId()] = $user->get('isActive') !== false;
@@ -115,7 +46,7 @@ class UserResolver
     $users = [];
 
     foreach ($userIds as $id) {
-      if (isset($eligible[$id]) && ($active[$id] || $includeInactive || in_array($id, $inactiveUserIds, true))) {
+      if (isset($eligible[$id]) && ($active[$id] || $selection->allowsInactiveUser($id))) {
         $users[$id] = $eligible[$id];
       }
     }
@@ -124,15 +55,7 @@ class UserResolver
       return ['users' => array_values($users), 'teamUserIdLists' => array_fill_keys($teamIds, [])];
     }
 
-    // Read relation aliases as raw rows; ORM User entities discard unknown attributes.
-    $membershipQuery = $this->entityManager->getQueryBuilder()
-      ->select(['id', Column::fromString('teams.id')->withAlias('teamId')])
-      ->from(User::ENTITY_TYPE)
-      ->join('teams')
-      ->where(['id' => array_keys($eligible), 'teams.id' => $teamIds])
-      ->distinct()
-      ->build();
-    $memberships = $this->entityManager->getQueryExecutor()->execute($membershipQuery);
+    $memberships = $this->findMemberships(array_keys($eligible), $teamIds);
     $teams = array_fill_keys($teamIds, []);
     $teamMembers = array_fill_keys($teamIds, []);
 
@@ -140,7 +63,10 @@ class UserResolver
       $id = $row['id'];
       $teamId = $row['teamId'];
 
-      if (isset($teams[$teamId], $eligible[$id]) && ($active[$id] || in_array($teamId, $inactiveTeams, true))) {
+      if (
+        isset($teams[$teamId], $eligible[$id]) &&
+        ($active[$id] || $selection->allowsInactiveTeam($teamId))
+      ) {
         $teamMembers[$teamId][$id] = $id;
 
         if (!isset($users[$id])) {
@@ -159,6 +85,83 @@ class UserResolver
       'users' => array_values($users),
       'teamUserIdLists' => array_map(static fn (array $ids): array => array_values($ids), $teamMembers),
     ];
+  }
+
+  private function checkAccess(UserSelection $selection): void
+  {
+    if (!$this->acl->check('Calendar') || $this->acl->getPermissionLevel('userCalendar') === 'no') {
+      throw new Forbidden();
+    }
+
+    if (
+      $this->acl->getPermissionLevel('userCalendar') === 'team' &&
+      array_diff($selection->teamIds, $this->user->getLinkMultipleIdList('teams'))
+    ) {
+      throw new Forbidden();
+    }
+  }
+
+  /** @return iterable<User> */
+  private function findCandidates(UserSelection $selection): iterable
+  {
+    $userIds = $selection->userIds;
+    $teamIds = $selection->teamIds;
+    $filter = ['type' => self::USER_TYPES];
+
+    $needsInactive =
+      $selection->includeInactiveUsers || $selection->inactiveTeamIds || $selection->inactiveUserIds;
+
+    if (!$needsInactive) {
+      $filter['isActive'] = true;
+    }
+
+    $repository = $this->entityManager->getRDBRepositoryByClass(User::class);
+    $conditions = [];
+
+    if ($userIds) {
+      $conditions[] = [
+        'id' => $userIds,
+        ...($needsInactive && !$selection->includeInactiveUsers ? ['isActive' => true] : []),
+      ];
+
+      if ($selection->inactiveUserIds) {
+        $conditions[] = ['id' => $selection->inactiveUserIds];
+      }
+    }
+
+    if ($teamIds) {
+      $conditions[] = ['teams.id' => $teamIds, ...($needsInactive ? ['isActive' => true] : [])];
+
+      if ($selection->inactiveTeamIds) {
+        $conditions[] = ['teams.id' => array_values($selection->inactiveTeamIds)];
+      }
+    }
+
+    $query = $teamIds ? $repository->leftJoin('teams')->distinct() : $repository->where([]);
+
+    return $query
+      ->where(['OR' => $conditions, ...$filter])
+      ->limit(0, Selection::MAX_USERS + 1)
+      ->sth()
+      ->find();
+  }
+
+  /**
+   * @param list<string> $userIds
+   * @param list<string> $teamIds
+   */
+  private function findMemberships(array $userIds, array $teamIds): \PDOStatement
+  {
+    // Read relation aliases as raw rows; ORM User entities discard unknown attributes.
+    $membershipQuery = $this->entityManager->getQueryBuilder()
+      ->select(['id', Column::fromString('teams.id')->withAlias('teamId')])
+      ->from(User::ENTITY_TYPE)
+      ->join('teams')
+      ->where(['id' => $userIds, 'teams.id' => $teamIds])
+      ->distinct()
+      ->build();
+
+    return $this->entityManager->getQueryExecutor()->execute($membershipQuery);
   }
 
   /** @param array<string, bool> $cache */

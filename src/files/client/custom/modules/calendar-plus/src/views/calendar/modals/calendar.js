@@ -77,25 +77,11 @@ define('calendar-plus:views/calendar/modals/calendar', [
 
       const settingsLayout = this.settingsForm.layout(
         this.model.attributes.mode,
-        !settingsOnly,
+        false,
         !settingsOnly && !membershipOnly,
       );
 
-      const peopleSection = settingsLayout.find((section) => section.name === 'people');
-      const peopleFields = peopleSection?.rows.flat().filter(Boolean) || [];
-      const inactiveUsers = peopleFields.find(
-        (field) => field.view.options.name === 'showInactiveUsers',
-      );
-
-      if (inactiveUsers) {
-        const remainingFields = peopleFields.filter((field) => field !== inactiveUsers);
-        peopleSection.rows = [];
-
-        for (let index = 0; index < remainingFields.length; index += 2) {
-          peopleSection.rows.push([remainingFields[index], remainingFields[index + 1] || false]);
-        }
-      }
-
+      const inactiveUsers = settingsOnly ? null : this.settingsForm.inactiveUsersField();
       const rows = this.calendarRows(membershipOnly, settingsOnly, inactiveUsers);
 
       this.recordView = new Record({

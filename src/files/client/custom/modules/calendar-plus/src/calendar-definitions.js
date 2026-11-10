@@ -65,6 +65,7 @@ define('calendar-plus:calendar-definitions', [], () => {
       return {
         teamIdList: item?.teamIdList || [],
         userIdList: item?.userIdList || [],
+        ...(includeInactive ? { includeInactiveUsers: true } : {}),
         ...(Object.keys(item?.teamColumns || {}).length ? { teamColumns: item.teamColumns } : {}),
       };
     }

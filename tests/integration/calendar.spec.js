@@ -53,19 +53,41 @@ test("teams expand in selection order without duplicate members", async ({
   expect(ids(await combined.json())).toEqual(expected);
 });
 
-test("inactive team members are opt-in", async ({ request }) => {
+test("inactive team members use their team option, independently of explicit users", async ({ request }) => {
   const selection = { teamIdList: [f.teams.operations.id] };
-  const active = await resolve(request, selection);
-  const all = await resolve(request, {
-    ...selection,
-    includeInactiveUsers: true,
-  });
-  expect((await active.json()).users.map((user) => user.id)).not.toContain(
-    f.people.james.id,
-  );
-  expect((await all.json()).users.map((user) => user.id)).toContain(
-    f.people.james.id,
-  );
+  const cases = [
+    { data: selection, includesInactive: false },
+    {
+      data: { ...selection, includeInactiveUsers: true },
+      includesInactive: false,
+    },
+    {
+      data: {
+        ...selection,
+        teamColumns: { [f.teams.operations.id]: { showInactiveUsers: true } },
+      },
+      includesInactive: true,
+    },
+    {
+      data: { ...selection, userIdList: [f.people.james.id] },
+      includesInactive: false,
+    },
+    {
+      data: {
+        ...selection,
+        userIdList: [f.people.james.id],
+        includeInactiveUsers: true,
+      },
+      includesInactive: true,
+    },
+  ];
+
+  for (const { data, includesInactive } of cases) {
+    const response = await resolve(request, data);
+    expect(response.ok()).toBeTruthy();
+    const ids = (await response.json()).users.map((user) => user.id);
+    expect(ids.includes(f.people.james.id)).toBe(includesInactive);
+  }
 });
 
 test("calendar and team permissions are enforced on the server", async ({

@@ -480,12 +480,7 @@ define('calendar-plus:views/calendar/calendar', [
           ...item,
         };
         const selection = Definitions.membershipSelection(selected, includeInactive);
-        const { users } = await Espo.Ajax.postRequest('CalendarPlus/Users', {
-          ...selection,
-          ...(includeInactive && selected.membershipMode !== 'static'
-            ? { includeInactiveUsers: true }
-            : {}),
-        });
+        const { users } = await Espo.Ajax.postRequest('CalendarPlus/Users', selection);
 
         if (!current()) return;
 
