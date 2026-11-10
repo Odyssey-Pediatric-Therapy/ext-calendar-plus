@@ -1592,3 +1592,20 @@ test('static inactive inclusion uses frozen team membership and explicit users i
   ]);
   assert.equal(definitions.membershipSelection(item).teamIdList.length, 0);
 });
+
+
+test('calendar styles use Espo stylesheet registration for cache-busting and editor availability', () => {
+  const metadata = JSON.parse(readFileSync(new URL(
+    '../../src/files/custom/Espo/Modules/CalendarPlus/Resources/metadata/app/client.json',
+    import.meta.url,
+  )));
+  assert.deepEqual(metadata.cssList, [
+    '__APPEND__',
+    'client/custom/modules/calendar-plus/css/calendar.css',
+    'client/custom/modules/calendar-plus/css/calendar-header.css',
+  ]);
+  for (const name of ['calendar', 'timeline']) {
+    const template = readFileSync(new URL(`../res/templates/calendar/${name}.tpl`, root), 'utf8');
+    assert.equal(template.includes('/css/calendar'), false);
+  }
+});

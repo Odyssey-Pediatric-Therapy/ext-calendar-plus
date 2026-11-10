@@ -45,7 +45,7 @@ define('calendar-plus:views/calendar/fields/teams', [
       });
       label.append(
         checkbox,
-        document.createTextNode(this.translate('Show inactive users', 'labels', 'Calendar')),
+        document.createTextNode(this.translate('Show inactive', 'labels', 'Calendar')),
       );
 
       const remove = document.createElement('a');

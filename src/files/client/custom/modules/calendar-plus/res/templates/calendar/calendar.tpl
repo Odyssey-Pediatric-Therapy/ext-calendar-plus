@@ -1,6 +1,3 @@
-<link href="{{basePath}}client/custom/modules/calendar-plus/css/calendar.css" rel="stylesheet">
-<link href="{{basePath}}client/custom/modules/calendar-plus/css/calendar-header.css" rel="stylesheet">
-
 {{#if header}}
 <div class="row button-container calendar-plus-header">
     <div class="date-title">

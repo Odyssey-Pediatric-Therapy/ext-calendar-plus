@@ -2,5 +2,10 @@
     "scriptList": [
         "__APPEND__",
         "client/custom/modules/calendar-plus/lib/init.js"
+    ],
+    "cssList": [
+        "__APPEND__",
+        "client/custom/modules/calendar-plus/css/calendar.css",
+        "client/custom/modules/calendar-plus/css/calendar-header.css"
     ]
 }
