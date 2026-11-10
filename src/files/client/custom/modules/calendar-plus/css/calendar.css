@@ -386,3 +386,24 @@
   text-align: left;
   white-space: normal;
 }
+
+/* Editable team rows: name, inactive-member option, remove control. */
+.cp-team-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.cp-team-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cp-team-inactive {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0 10px 0 0;
+  font-weight: normal;
+}

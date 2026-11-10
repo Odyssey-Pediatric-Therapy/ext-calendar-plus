@@ -14,7 +14,7 @@ final class Selection
     return is_string($id) && $id !== '' && strlen($id) <= 100;
   }
 
-  /** @return string[] */
+  /** @return list<string> */
   public static function ids(mixed $value, int $limit = self::MAX_USERS): array
   {
     if (!is_array($value) || !array_is_list($value) || count($value) > $limit) {
@@ -28,5 +28,35 @@ final class Selection
     }
 
     return array_values(array_unique($value));
+  }
+
+  /** @return list<string> */
+  public static function inactiveTeams(mixed $columns): array
+  {
+    if ($columns === []) {
+      return [];
+    }
+
+    if (!$columns instanceof \stdClass || count(get_object_vars($columns)) > self::MAX_TEAMS) {
+      throw new BadRequest('Invalid calendar team options.');
+    }
+
+    $ids = [];
+
+    foreach (get_object_vars($columns) as $id => $options) {
+      if (
+        !self::isId((string) $id) ||
+        !$options instanceof \stdClass ||
+        (property_exists($options, 'showInactiveUsers') && !is_bool($options->showInactiveUsers))
+      ) {
+        throw new BadRequest('Invalid calendar team options.');
+      }
+
+      if (($options->showInactiveUsers ?? false) === true) {
+        $ids[] = (string) $id;
+      }
+    }
+
+    return $ids;
   }
 }

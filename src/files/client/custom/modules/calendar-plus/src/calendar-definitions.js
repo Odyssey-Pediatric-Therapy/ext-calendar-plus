@@ -60,13 +60,33 @@ define('calendar-plus:calendar-definitions', [], () => {
     };
   };
 
-  const membershipSelection = (item) =>
-    item?.membershipMode === 'static'
-      ? {
-          teamIdList: [],
-          userIdList: Array.isArray(item.staticUserIdList) ? item.staticUserIdList : [],
-        }
-      : { teamIdList: item?.teamIdList || [], userIdList: item?.userIdList || [] };
+  const membershipSelection = (item, includeInactive = false) => {
+    if (item?.membershipMode !== 'static') {
+      return {
+        teamIdList: item?.teamIdList || [],
+        userIdList: item?.userIdList || [],
+        ...(includeInactive ? { includeInactiveUsers: true } : {}),
+        ...(Object.keys(item?.teamColumns || {}).length ? { teamColumns: item.teamColumns } : {}),
+      };
+    }
+
+    const users = Array.isArray(item.staticUserIdList) ? item.staticUserIdList : [];
+    const inactive = new Set(includeInactive ? item.userIdList || [] : []);
+
+    for (const teamId of item.teamIdList || []) {
+      if (item.teamColumns?.[teamId]?.showInactiveUsers !== true) continue;
+
+      for (const id of item.staticTeamUserIdLists?.[teamId] || []) inactive.add(id);
+    }
+
+    const inactiveUserIdList = users.filter((id) => inactive.has(id));
+
+    return {
+      teamIdList: [],
+      userIdList: users,
+      ...(inactiveUserIdList.length ? { inactiveUserIdList } : {}),
+    };
+  };
 
   const find = (preferences, routeMode) =>
     list(preferences).find((item) => item.routeMode === routeMode);

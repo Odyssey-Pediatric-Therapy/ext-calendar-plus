@@ -473,17 +473,14 @@ define('calendar-plus:views/calendar/calendar', [
 
       try {
         const item = Definitions.find(this.getPreferences(), this.mode);
-        const selection = Definitions.membershipSelection({
+        const includeInactive = Definitions.showInactiveUsers(this.getPreferences(), this.mode);
+        const selected = {
           teamIdList: this.teamIdList || [],
           userIdList: this.selectedUserIds || [],
           ...item,
-        });
-        const { users } = await Espo.Ajax.postRequest('CalendarPlus/Users', {
-          ...selection,
-          ...(Definitions.showInactiveUsers(this.getPreferences(), this.mode)
-            ? { includeInactiveUsers: true }
-            : {}),
-        });
+        };
+        const selection = Definitions.membershipSelection(selected, includeInactive);
+        const { users } = await Espo.Ajax.postRequest('CalendarPlus/Users', selection);
 
         if (!current()) return;
 

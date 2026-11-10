@@ -1608,7 +1608,7 @@ test('static Day, Week, and Month use only captured IDs while inactive visibilit
       name: 'Static view',
       mode,
       teamIdList: ['changed-team'],
-      userIdList: ['new-user'],
+      userIdList: ['former'],
       membershipMode: 'static',
       staticUserIdList: ['ann', 'former'],
     };
@@ -1624,7 +1624,7 @@ test('static Day, Week, and Month use only captured IDs while inactive visibilit
       calls.push(body);
       const all = body.userIdList.map((id) => ({ id, name: id }));
 
-      return { users: body.includeInactiveUsers ? all : all.filter((u) => u.id !== 'former') };
+      return { users: body.inactiveUserIdList?.includes('former') ? all : all.filter((u) => u.id !== 'former') };
     };
     await view.fetchEvents('from', 'to', () => {});
     assert.deepEqual(JSON.parse(JSON.stringify(calls[0])), {
@@ -1641,7 +1641,7 @@ test('static Day, Week, and Month use only captured IDs while inactive visibilit
     assert.deepEqual(JSON.parse(JSON.stringify(calls[1])), {
       teamIdList: [],
       userIdList: ['ann', 'former'],
-      includeInactiveUsers: true,
+      inactiveUserIdList: ['former'],
     });
     assert.deepEqual(
       Array.from(view.sharedUsers, (u) => u.id),

@@ -529,7 +529,7 @@ test('static saved and default Timelines never re-expand teams and respect inact
       id: 'a',
       name: 'Static timeline',
       teamIdList: ['changed-team'],
-      userIdList: ['new-person'],
+      userIdList: ['former'],
       membershipMode: 'static',
       staticUserIdList: ['ann', 'former'],
     };
@@ -555,7 +555,7 @@ test('static saved and default Timelines never re-expand teams and respect inact
     assert.deepEqual(plain(calls[1]), {
       teamIdList: [],
       userIdList: ['ann', 'former'],
-      includeInactiveUsers: true,
+      inactiveUserIdList: ['former'],
     });
   }
 });

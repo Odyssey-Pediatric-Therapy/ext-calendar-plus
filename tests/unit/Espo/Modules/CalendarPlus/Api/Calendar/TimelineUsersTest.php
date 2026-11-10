@@ -11,6 +11,7 @@ use Espo\Core\Exceptions\Forbidden;
 use Espo\Entities\User;
 use Espo\Modules\CalendarPlus\Api\Calendar\TimelineUsers;
 use Espo\Modules\CalendarPlus\Tools\Calendar\UserResolver;
+use Espo\Modules\CalendarPlus\Tools\Calendar\UserSelection;
 use Espo\ORM\EntityCollection;
 use Espo\ORM\EntityManager;
 use Espo\ORM\Executor\QueryExecutor;
@@ -36,13 +37,14 @@ final class MembershipStatement extends PDOStatement
 
 final class TimelineUsersTest extends TestCase
 {
-  private function user(string $id, string $name, ?string $team = null, string $type = 'regular'): User
+  private function user(string $id, string $name, ?string $team = null, string $type = 'regular', bool $active = true): User
   {
     $user = $this->createMock(User::class);
     $user->method('getId')->willReturn($id);
     $user->method('getType')->willReturn($type);
     $user->method('get')->willReturnCallback(static fn ($field) => match ($field) {
       'name' => $name,
+      'isActive' => $active,
       'calendarPlusTeamId' => $team,
       default => null,
     });
@@ -177,6 +179,60 @@ final class TimelineUsersTest extends TestCase
     self::assertArrayNotHasKey('isActive', $queries[0]);
   }
 
+  public function testInactiveMembersAreControlledPerTeamIndependentlyOfExplicitUsers(): void
+  {
+    foreach ([false, true] as $includeInactive) {
+      $queries = [];
+      $manager = $this->manager(
+        [$this->user('explicit', 'Explicit', null, 'regular', false)],
+        [
+          $this->user('active', 'Active', 'team-a'),
+          $this->user('hidden', 'Hidden', 'team-a', 'regular', false),
+          $this->user('shared', 'Shared', 'team-a', 'regular', false),
+          $this->user('shared', 'Shared', 'team-b', 'regular', false),
+          $this->user('former', 'Former', 'team-b', 'regular', false),
+        ],
+        $queries,
+      );
+      $acl = $this->acl();
+      $acl->method('checkUserPermission')->willReturn(true);
+      $resolver = new UserResolver($manager, $acl, $this->user('me', 'Me'));
+      $result = $resolver->resolve(new UserSelection((object) [
+        'userIdList' => ['explicit'],
+        'teamIdList' => ['team-a', 'team-b'],
+        'includeInactiveUsers' => $includeInactive,
+        'teamColumns' => (object) ['team-b' => (object) ['showInactiveUsers' => true]],
+      ]));
+
+      self::assertSame(
+        $includeInactive ? ['explicit', 'active', 'former', 'shared'] : ['active', 'former', 'shared'],
+        array_column($result['users'], 'id'),
+      );
+      self::assertSame(['active'], $result['teamUserIdLists']['team-a']);
+      self::assertSame(['shared', 'former'], $result['teamUserIdLists']['team-b']);
+      self::assertCount(2, $queries);
+      self::assertSame(['team-b'], $queries[0]['OR'][2]['teams.id']);
+    }
+  }
+
+  public function testStaticSelectionAllowsOnlySpecifiedInactiveIds(): void
+  {
+    $manager = $this->manager([
+      $this->user('active', 'Active'),
+      $this->user('shown', 'Shown', null, 'regular', false),
+      $this->user('hidden', 'Hidden', null, 'regular', false),
+    ]);
+    $acl = $this->acl();
+    $acl->method('checkUserPermission')->willReturn(true);
+    $users = (new UserResolver($manager, $acl, $this->user('me', 'Me')))
+      ->resolve(new UserSelection((object) [
+        'userIdList' => ['active', 'shown', 'hidden'],
+        'inactiveUserIdList' => ['shown'],
+      ]))['users'];
+
+    self::assertSame(['active', 'shown'], array_column($users, 'id'));
+  }
+
   public function testEmptySelectionNeverQueriesEveryone(): void
   {
     $manager = $this->createMock(EntityManager::class);
@@ -187,7 +243,7 @@ final class TimelineUsersTest extends TestCase
   public function testCalendarPermissionNoRejectsResolution(): void
   {
     $this->expectException(Forbidden::class);
-    (new UserResolver($this->createMock(EntityManager::class), $this->acl('no'), $this->user('me', 'Me')))->resolve(['other']);
+    (new UserResolver($this->createMock(EntityManager::class), $this->acl('no'), $this->user('me', 'Me')))->resolve(new UserSelection((object) ['userIdList' => ['other']]));
   }
 
   public function testTeamPermissionCannotResolveUnrelatedTeamsEvenWhenInactiveUsersAreIncluded(): void
@@ -195,7 +251,10 @@ final class TimelineUsersTest extends TestCase
     $user = $this->user('me', 'Me');
     $user->method('getLinkMultipleIdList')->with('teams')->willReturn(['my-team']);
     $this->expectException(Forbidden::class);
-    (new UserResolver($this->createMock(EntityManager::class), $this->acl('team'), $user))->resolve([], ['other-team'], true);
+    (new UserResolver($this->createMock(EntityManager::class), $this->acl('team'), $user))->resolve(new UserSelection((object) [
+      'teamIdList' => ['other-team'],
+      'includeInactiveUsers' => true,
+    ]));
   }
 
   public function testMalformedIdsAndInactiveOptionAreRejectedBeforeQuerying(): void
@@ -203,9 +262,18 @@ final class TimelineUsersTest extends TestCase
     $manager = $this->createMock(EntityManager::class);
     $manager->expects(self::never())->method('getRDBRepositoryByClass');
     $resolver = new UserResolver($manager, $this->acl(), $this->user('me', 'Me'));
-    foreach ([['not-array', [], false], [[1], [], false], [[], [''], false], [[], [], 'true'], [array_fill(0, 301, 'user'), [], false], [[], array_fill(0, 101, 'team'), false]] as $arguments) {
+    foreach ([
+      ['userIdList' => 'not-array'],
+      ['userIdList' => [1]],
+      ['teamIdList' => ['']],
+      ['includeInactiveUsers' => 'true'],
+      ['teamColumns' => (object) ['team' => (object) ['showInactiveUsers' => 'yes']]],
+      ['userIdList' => ['ann'], 'inactiveUserIdList' => ['other']],
+      ['userIdList' => array_fill(0, 301, 'user')],
+      ['teamIdList' => array_fill(0, 101, 'team')],
+    ] as $data) {
       try {
-        $resolver->resolve(...$arguments);
+        $resolver->resolve(new UserSelection((object) $data));
         self::fail('Malformed selection was accepted.');
       } catch (BadRequest) {
       }
@@ -222,6 +290,6 @@ final class TimelineUsersTest extends TestCase
     $acl = $this->acl();
     $acl->expects(self::exactly(300))->method('checkUserPermission')->willReturn(true);
     $this->expectException(BadRequest::class);
-    (new UserResolver($manager, $acl, $this->user('me', 'Me')))->resolve([], ['team']);
+    (new UserResolver($manager, $acl, $this->user('me', 'Me')))->resolve(new UserSelection((object) ['teamIdList' => ['team']]));
   }
 }

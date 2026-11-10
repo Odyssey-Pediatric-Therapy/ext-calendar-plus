@@ -7,6 +7,7 @@ use Espo\Core\Api\Request;
 use Espo\Core\Api\Response;
 use Espo\Core\Api\ResponseComposer;
 use Espo\Modules\CalendarPlus\Tools\Calendar\UserResolver;
+use Espo\Modules\CalendarPlus\Tools\Calendar\UserSelection;
 
 class TimelineUsers implements Action
 {
@@ -16,14 +17,8 @@ class TimelineUsers implements Action
 
   public function process(Request $request): Response
   {
-    $data = $request->getParsedBody();
+    $selection = new UserSelection($request->getParsedBody());
 
-    return ResponseComposer::json([
-      'users' => $this->resolver->resolve(
-        $data->userIdList ?? [],
-        $data->teamIdList ?? [],
-        $data->includeInactiveUsers ?? false,
-      ),
-    ]);
+    return ResponseComposer::json($this->resolver->resolve($selection));
   }
 }

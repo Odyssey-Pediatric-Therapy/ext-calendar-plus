@@ -89,6 +89,31 @@ class CalendarPreferences implements Validator
       }
     }
 
+    if (property_exists($value, 'teamColumns')) {
+      Selection::inactiveTeams($value->teamColumns);
+    }
+
+    if (property_exists($value, 'staticTeamUserIdLists')) {
+      if (
+        !$value->staticTeamUserIdLists instanceof stdClass ||
+        count(get_object_vars($value->staticTeamUserIdLists)) > Selection::MAX_TEAMS
+      ) {
+        return false;
+      }
+
+      foreach (get_object_vars($value->staticTeamUserIdLists) as $id => $members) {
+        if (!Selection::isId((string) $id)) {
+          return false;
+        }
+
+        $ids = Selection::ids($members);
+
+        if (array_diff($ids, $value->staticUserIdList ?? [])) {
+          return false;
+        }
+      }
+    }
+
     foreach (['teamNames', 'userNames'] as $field) {
       if (!property_exists($value, $field)) {
         continue;

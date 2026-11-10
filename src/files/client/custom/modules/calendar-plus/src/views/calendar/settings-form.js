@@ -107,7 +107,11 @@ define('calendar-plus:views/calendar/settings-form', [
         ]);
       };
 
-      if (inactiveUsersAvailable) add('showInactiveUsers', 'Show inactive users');
+      if (inactiveUsersAvailable) {
+        sections
+          .find((section) => section.name === 'people')
+          .rows.push([this.inactiveUsersField(), false]);
+      }
 
       add('showWeekends', 'Show weekends');
 
@@ -182,6 +186,19 @@ define('calendar-plus:views/calendar/settings-form', [
         }));
 
       return detailLayout;
+    }
+
+    inactiveUsersField() {
+      this.settingNames.push('showInactiveUsers');
+
+      return {
+        view: new Bool({
+          name: 'showInactiveUsers',
+          labelText: this.translate('Show inactive users', 'labels', 'Calendar'),
+          tooltipText: this.translate('Explicit Inactive Users Help', 'messages', 'Calendar'),
+          params: { tooltip: true },
+        }),
+      };
     }
 
     sectionRows(section) {

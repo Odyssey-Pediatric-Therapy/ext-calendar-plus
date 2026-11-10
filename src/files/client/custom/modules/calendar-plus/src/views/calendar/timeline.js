@@ -429,15 +429,14 @@ define('calendar-plus:views/calendar/timeline', [
 
       if (item) {
         try {
-          const data = await Espo.Ajax.postRequest('CalendarPlus/Users', {
-            ...Definitions.membershipSelection(item),
-            ...(Definitions.showInactiveUsers(
-              this.getPreferences(),
-              this.mode || item.routeMode || 'timeline',
-            )
-              ? { includeInactiveUsers: true }
-              : {}),
-          });
+          const includeInactive = Definitions.showInactiveUsers(
+            this.getPreferences(),
+            this.mode || item.routeMode || 'timeline',
+          );
+          const data = await Espo.Ajax.postRequest(
+            'CalendarPlus/Users',
+            Definitions.membershipSelection(item, includeInactive),
+          );
 
           if (this.removed || revision !== this.fetchRevision) return;
 
