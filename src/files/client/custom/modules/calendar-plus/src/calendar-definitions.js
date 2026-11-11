@@ -41,7 +41,12 @@ define('calendar-plus:calendar-definitions', [], () => {
           )
         : [];
 
-      if (!users.length) users.push({ id: user.id, name: user.get('name') });
+      if (!users.length) {
+        users.push({
+          id: user.id,
+          name: user.get('name')
+        });
+      }
 
       selection = {
         teamIdList: [],
@@ -74,7 +79,9 @@ define('calendar-plus:calendar-definitions', [], () => {
     const inactive = new Set(includeInactive ? item.userIdList || [] : []);
 
     for (const teamId of item.teamIdList || []) {
-      if (item.teamColumns?.[teamId]?.showInactiveUsers !== true) continue;
+      if (item.teamColumns?.[teamId]?.showInactiveUsers !== true) {
+        continue;
+      }
 
       for (const id of item.staticTeamUserIdLists?.[teamId] || []) inactive.add(id);
     }
@@ -101,17 +108,23 @@ define('calendar-plus:calendar-definitions', [], () => {
     preferences?.get('calendarPlusViewSettings')?.[viewSettingsKey(preferences, routeMode)] || {};
 
   const normalizeTime = (value) => {
-    if (typeof value !== 'string') return null;
+    if (typeof value !== 'string') {
+      return null;
+    }
 
     value = value.trim();
 
-    if (!/^(?:\d{3,4}|\d{1,2}:\d{2})$/.test(value)) return null;
+    if (!/^(?:\d{3,4}|\d{1,2}:\d{2})$/.test(value)) {
+      return null;
+    }
 
     const digits = value.replace(':', '').padStart(4, '0');
     const hour = Number(digits.slice(0, 2));
     const minute = Number(digits.slice(2));
 
-    if (hour > 24 || minute > 59 || (hour === 24 && minute !== 0)) return null;
+    if (hour > 24 || minute > 59 || (hour === 24 && minute !== 0)) {
+      return null;
+    }
 
     return `${digits.slice(0, 2)}:${digits.slice(2)}`;
   };
@@ -132,7 +145,9 @@ define('calendar-plus:calendar-definitions', [], () => {
   const applyAppearance = (view) => {
     const element = view.el || view.$el?.get?.(0);
 
-    if (!element?.dataset) return;
+    if (!element?.dataset) {
+      return;
+    }
 
     const settings = viewSettings(view.getPreferences(), view.mode || 'timeline');
 
@@ -160,9 +175,12 @@ define('calendar-plus:calendar-definitions', [], () => {
 
   const shouldFilterEvents = (view, events = []) => {
     const settings = viewSettings(view.getPreferences(), view.mode || 'timeline');
+    const hasSharedMembership = !!view.isSharedTimeGrid?.() || !!view.getMembershipSelection?.();
+    const userId = view.getUser?.()?.id;
 
     const canReadResponses =
-      !!view.getUser?.()?.id &&
+      !!userId &&
+      hasSharedMembership &&
       events.some((event) => {
         const props = event.extendedProps || event;
 
@@ -178,9 +196,13 @@ define('calendar-plus:calendar-definitions', [], () => {
   };
 
   const matchesStatusSettings = (view, event, settings) => {
-    if (event.type === 'background' || event.display === 'inverse-background') return true;
+    if (event.type === 'background' || event.display === 'inverse-background') {
+      return true;
+    }
 
-    if (isSearchResult(view, event)) return true;
+    if (isSearchResult(view, event)) {
+      return true;
+    }
 
     const props = event.extendedProps || event;
     const canceled = view.getEventTypeCanceledStatusList?.(props.scope) || [];
@@ -200,61 +222,43 @@ define('calendar-plus:calendar-definitions', [], () => {
     view.styleDeclinedEvent?.(event);
   };
 
-  const filterEvents = async (view, events) => {
+  const filterEvents = (view, events) => {
     const settings = viewSettings(view.getPreferences(), view.mode || 'timeline');
+    const userId = view.getUser?.()?.id;
+    const filtered = events.filter((event) => {
+      if (!matchesStatusSettings(view, event, settings)) {
+        return false;
+      }
+      if (!userId || event.type === 'background' || event.display === 'inverse-background') {
+        return true;
+      }
 
-    if (settings.showCanceledEvents === false || settings.showCompletedEvents === false) {
-      events = events.filter((event) => matchesStatusSettings(view, event, settings));
+      const props = event.extendedProps || event;
+      const declined = props.calendarPlusDetails?.usersColumns?.[userId]?.status === 'Declined';
+
+      if (!declined) {
+        return true;
+      }
+      if (settings.showDeclinedEvents === false && !isSearchResult(view, event)) {
+        return false;
+      }
+
+      markDeclinedEvent(view, event, props);
+
+      return true;
+    });
+
+    if (filtered.length === events.length) {
+      return events;
     }
 
-    const userId = view.getUser?.()?.id;
-
-    if (!userId) return events;
-
-    const keep = events.map(() => true);
-    let index = 0;
-
-    const worker = async () => {
-      while (index < events.length) {
-        const position = index++;
-        const event = events[position];
-        const props = event.extendedProps || event;
-        const scope = props.scope;
-
-        if (!scope || event.type === 'background' || event.display === 'inverse-background')
-          continue;
-
-        const hasResponses =
-          ['Meeting', 'Call'].includes(scope) ||
-          view.getMetadata?.().get(['entityDefs', scope, 'fields', 'users', 'columns', 'status']);
-
-        if (!hasResponses) continue;
-
-        const recordId = props.recordId || event['record-id'];
-
-        if (!recordId) continue;
-
-        // Reuse permission-checked tooltip details and cache; limit concurrent requests.
-
-        const details = await view.eventTooltip.loadDetails({ extendedProps: { scope, recordId } });
-        const declined = details?.usersColumns?.[userId]?.status === 'Declined';
-
-        keep[position] =
-          !declined || settings.showDeclinedEvents !== false || isSearchResult(view, event);
-
-        if (declined && keep[position]) {
-          markDeclinedEvent(view, event, props);
-        }
-      }
-    };
-
-    await Promise.all(Array.from({ length: Math.min(4, events.length) }, worker));
-
-    return keep.every(Boolean) ? events : events.filter((_, position) => keep[position]);
+    return filtered;
   };
 
   const highlightSearchResult = (view) => {
-    if (!view.searchResult) return;
+    if (!view.searchResult) {
+      return;
+    }
 
     let focused = false;
 

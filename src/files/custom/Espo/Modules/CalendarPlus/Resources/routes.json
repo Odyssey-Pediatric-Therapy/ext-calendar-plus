@@ -13,5 +13,10 @@
         "route": "/CalendarPlus/WorkingTimeRanges",
         "method": "post",
         "actionClassName": "Espo\\Modules\\CalendarPlus\\Api\\Calendar\\WorkingTimeRanges"
+    },
+    {
+        "route": "/CalendarPlus/Load",
+        "method": "post",
+        "actionClassName": "Espo\\Modules\\CalendarPlus\\Api\\Calendar\\Load"
     }
 ]

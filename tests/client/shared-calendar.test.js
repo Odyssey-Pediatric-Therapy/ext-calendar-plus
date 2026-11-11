@@ -11,8 +11,12 @@ class Element {
     this.classes = new Set();
     this.classList = {
       toggle: (name, active) => {
-        if (active) this.classes.add(name);
-        else this.classes.delete(name);
+        if (active) {
+          this.classes.add(name);
+        }
+        else {
+          this.classes.delete(name);
+        }
       },
     };
   }
@@ -169,7 +173,11 @@ function fixture(savedMode = 'basicDay', tasksAllDay) {
       postRequest: async (url, body) => {
         calls.push({ url, body });
 
-        if (url === 'CalendarPlus/WorkingTimeRanges') return { ranges: [] };
+        if (url === 'CalendarPlus/WorkingTimeRanges') {
+          return {
+            ranges: []
+          };
+        }
 
         return {
           users: [
@@ -234,6 +242,7 @@ function fixture(savedMode = 'basicDay', tasksAllDay) {
         EventTooltip = factory(definitions);
       },
       document,
+      Espo: espo,
       setTimeout,
       clearTimeout,
     },
@@ -255,6 +264,30 @@ function fixture(savedMode = 'basicDay', tasksAllDay) {
       queueMicrotask,
     },
   );
+  // Simulate the new backend's use of the existing membership/calendar services.
+  // Legacy service stubs below remain independently controllable in domain tests.
+  let resolve = espo.Ajax.postRequest;
+  const loadCalls = [];
+  const transport = (handler) => async (url, body) => {
+    if (url !== 'CalendarPlus/Load') {
+      return handler(url, body);
+    }
+    loadCalls.push(body);
+    const data = await handler('CalendarPlus/Users', body.selection || {});
+    const users = data.users || [];
+    const events = users.length ? await espo.Ajax.getRequest('Activities', {
+      from: body.from, to: body.to, agenda: body.agenda,
+      userIdList: users.map((user) => user.id).join(','), scopeList: (body.scopeList || []).join(','),
+    }) : [];
+    const working = body.workingTime && users.length ? await handler('CalendarPlus/WorkingTimeRanges', {
+      from: body.from, to: body.to, userIdList: users.map((user) => user.id),
+    }) : { ranges: [] };
+    return { users, events, ranges: working.ranges || [] };
+  };
+  Object.defineProperty(espo.Ajax, 'postRequest', {
+    get: () => transport(resolve),
+    set: (value) => { resolve = value; },
+  });
   const view = new View();
   view.allDayScopeList = ['Task', 'Meeting'];
   view.mode = 'view-saved';
@@ -309,7 +342,7 @@ function fixture(savedMode = 'basicDay', tasksAllDay) {
     },
   };
 
-  return { view, calls, espo, document, config };
+  return { view, calls, espo, document, config, loadCalls };
 }
 
 test('task all-day configuration is honored without changing the default', () => {
@@ -402,10 +435,8 @@ test('slot selection uses the column owner and restores parent options', async (
 test('empty membership skips event requests; stale requests cannot replace fresh members', async () => {
   const { view, espo, calls } = fixture();
   let resolveOld;
-  espo.Ajax.postRequest = () =>
-    new Promise((resolve) => {
-      resolveOld = resolve;
-    });
+  espo.Ajax.postRequest = (url) => url === 'CalendarPlus/WorkingTimeRanges'
+    ? Promise.resolve({ ranges: [] }) : new Promise((resolve) => { resolveOld = resolve; });
   let oldDelivered = false;
   const old = view.fetchEvents('from', 'to', () => {
     oldDelivered = true;
@@ -415,7 +446,7 @@ test('empty membership skips event requests; stale requests cannot replace fresh
   resolveOld({ users: [{ id: 'ann', name: 'Ann' }] });
   await old;
   assert.equal(oldDelivered, false);
-  assert.equal(calls.length, 0);
+  assert.equal(calls.length, 1);
   assert.equal(view.sharedUsers.length, 0);
 });
 
@@ -569,10 +600,8 @@ test('re-rendering Day destroys old columns and ignores requests started before 
   await view.fetchEvents('from', 'to', () => {});
   const oldColumns = view.dayCalendars.map((item) => item.calendar);
   let resolve;
-  espo.Ajax.postRequest = () =>
-    new Promise((done) => {
-      resolve = done;
-    });
+  espo.Ajax.postRequest = (url) => url === 'CalendarPlus/WorkingTimeRanges'
+    ? Promise.resolve({ ranges: [] }) : new Promise((done) => { resolve = done; });
   let delivered = false;
   const pending = view.fetchEvents('from', 'to', () => {
     delivered = true;
@@ -910,6 +939,40 @@ test('Day events use solid entity colors instead of person gradients', async () 
   assert.equal(task.style.borderColor, '#70c173');
 });
 
+test('registering events without an active highlight does not revisit prior event elements', async () => {
+  const { view } = fixture('basicWeek');
+  await view.fetchEvents('from', 'to', () => {});
+  const elements = Array.from({ length: 50 }, () => new Element());
+  let highlightUpdates = 0;
+
+  for (const element of elements) {
+    const toggle = element.classList.toggle;
+
+    element.classList.toggle = (name, active) => {
+      if (name.startsWith('cp-person-event-')) {
+        highlightUpdates++;
+      }
+
+      toggle(name, active);
+    };
+    view.registerEventElement({
+      el: element,
+      event: { extendedProps: { scope: 'Meeting', calendarUserIds: ['ann'] } },
+    });
+  }
+
+  assert.equal(highlightUpdates, 0);
+
+  view.hoveredUserId = 'ann';
+  view.updatePersonHighlight();
+  const lateElement = new Element();
+  view.registerEventElement({
+    el: lateElement,
+    event: { extendedProps: { scope: 'Meeting', calendarUserIds: ['bob'] } },
+  });
+  assert.equal(lateElement.classes.has('cp-person-event-dimmed'), true);
+});
+
 test('hiding a participant repaints a shared event gradient using the remaining person', async () => {
   const { view } = fixture('basicWeek');
   await view.fetchEvents('from', 'to', () => {});
@@ -984,9 +1047,7 @@ test('event tooltips show times, assignee, and actual attendees beyond the selec
     status: 'Planned',
     location: 'Room A',
   };
-  view.getModelFactory = () => ({
-    create: async () => ({ fetch: async () => {}, get: (name) => record[name] }),
-  });
+  event.extendedProps.calendarPlusDetails = record;
   const element = new Element();
   view.registerEventElement({ el: element, event });
   await view.eventTooltip.show(element);
@@ -1011,34 +1072,13 @@ test('event tooltips show times, assignee, and actual attendees beyond the selec
   assert.equal(element.getAttribute('aria-describedby'), null);
 });
 
-test('tooltip details are cached until refresh and gracefully retain summaries if record access is denied', async () => {
+test('missing inline details retain summaries without fetching a full record', async () => {
   const { view } = fixture('basicWeek');
   await view.fetchEvents('from', 'to', () => {});
-  let fetches = 0;
-  view.getModelFactory = () => ({
-    create: async () => ({
-      fetch: async () => {
-        fetches++;
-        throw new Error('Forbidden');
-      },
-    }),
-  });
+  view.getModelFactory = () => { throw new Error('No record request allowed'); };
   const event = tooltipEvent();
-  const results = await Promise.all([
-    view.eventTooltip.loadDetails(event),
-    view.eventTooltip.loadDetails(event),
-  ]);
-  assert.deepEqual(results, [null, null]);
-  assert.equal(fetches, 1);
-  const summary = view.eventTooltip.detailsFor(event);
-  assert.equal(summary.rows.find((row) => row.label === 'Calendar users').value, 'Ann');
-  assert.equal(
-    summary.rows.some((row) => row.label === 'Attendees'),
-    false,
-  );
-  view.eventTooltip.refresh();
-  await view.eventTooltip.loadDetails(event);
-  assert.equal(fetches, 2);
+  assert.equal(await view.eventTooltip.loadDetails(event), null);
+  assert.equal(view.eventTooltip.detailsFor(event).rows.find((row) => row.label === 'Calendar users').value, 'Ann');
 });
 
 test('unmounting an event closes its tooltip and prevents late detail responses from reopening it', async () => {
@@ -1049,15 +1089,9 @@ test('unmounting an event closes its tooltip and prevents late detail responses 
   const fetching = new Promise((resolve) => {
     started = resolve;
   });
-  view.getModelFactory = () => ({
-    create: async () => ({
-      fetch: () =>
-        new Promise((resolve) => {
-          release = resolve;
-          started();
-        }),
-      get: () => undefined,
-    }),
+  view.eventTooltip.loadDetails = () => new Promise((resolve) => {
+    release = resolve;
+    started();
   });
   const element = new Element();
   view.registerEventElement({ el: element, event: tooltipEvent() });
@@ -1118,7 +1152,7 @@ test('admin tooltip setting prevents hover/focus details from opening or fetchin
   assert.equal(reads, 0);
   config.calendarPlusTooltipEnabled = true;
   await view.eventTooltip.show(element);
-  assert.equal(reads, 1);
+  assert.equal(reads, 0);
   assert.equal(view.eventTooltip.active != null, true);
   view.eventTooltip.hide();
 });
@@ -1160,22 +1194,21 @@ test('standard Month, Week, and Day calendars mount detailed tooltips and obey t
         get: (name) => ({ assignedUserName: 'Ann', usersNames: { bob: 'Bob' } })[name],
       }),
     });
-    view.eventTooltip.cache.set('stale', Promise.resolve(null));
     await view.fetchEvents('from', 'to', () => {});
-    assert.equal(view.baseFetched, true);
-    assert.equal(view.eventTooltip.cache.size, 0);
+    assert.equal(view.baseFetched, undefined);
+    assert.equal(view.eventTooltip.cache, undefined);
     const hooks = view.calendar.options;
     const el = new Element();
     hooks.eventDidMount({ el, event: tooltipEvent() });
     await view.eventTooltip.show(el);
-    assert.equal(reads, 1);
+    assert.equal(reads, 0);
     assert.equal(view.eventTooltip.active.panel.children[0].textContent, 'Planning <img src=x>');
     hooks.eventDragStart();
     assert.equal(view.eventTooltip.active, null);
     config.calendarPlusTooltipEnabled = false;
     await view.eventTooltip.show(el);
     assert.equal(view.eventTooltip.active, null);
-    assert.equal(reads, 1);
+    assert.equal(reads, 0);
     hooks.eventWillUnmount({ el });
     assert.equal(view.eventTooltip.bindings.size, 0);
     assert.equal(view.eventAppearances.size, 0);
@@ -1257,10 +1290,8 @@ test('attendee indicators include all response statuses for users, contacts, and
       leadsNames: { lead: 'Lead', unknown: 'Unknown' },
       leadsColumns: { unknown: { status: 'Unrecognized' } },
     };
-    view.getModelFactory = () => ({
-      create: async () => ({ fetch: async () => {}, get: (name) => record[name] }),
-    });
     const event = tooltipEvent(scope);
+    event.extendedProps.calendarPlusDetails = record;
     const details = await view.eventTooltip.loadDetails(event);
     assert.equal(details.usersColumns.ann.status, 'Accepted');
     const row = view.eventTooltip
@@ -1323,9 +1354,7 @@ test('Task tooltips omit calendar-user fallback and only show actual collaborato
     );
   }
   const record = { assignedUserName: 'Ann', collaboratorsNames: { bob: 'Bob', maya: 'Maya' } };
-  view.getModelFactory = () => ({
-    create: async () => ({ fetch: async () => {}, get: (name) => record[name] }),
-  });
+  event.extendedProps.calendarPlusDetails = record;
   const details = await view.eventTooltip.loadDetails(event);
   assert.equal(details.collaboratorsNames.bob, 'Bob');
   const summary = view.eventTooltip.detailsFor(event, details);
@@ -1350,8 +1379,13 @@ test('shared Day initially scrolls to the configured hour after its empty loadin
       container.scrollTop = 0;
       container.getBoundingClientRect = () => ({ top: 100 });
       container.querySelector = (selector) => {
-        if (selector === 'section > div:first-child')
-          return { getBoundingClientRect: () => ({ height: 44 }) };
+        if (selector === 'section > div:first-child') {
+          return {
+            getBoundingClientRect: () => ({
+              height: 44
+            })
+          };
+        }
 
         assert.equal(selector, `[data-time="${String(hour).padStart(2, '0')}:00:00"]`);
 
@@ -1461,15 +1495,20 @@ test('unreadable or non-editable attendee lists reject the drop without falling 
   for (const mode of ['readOnly', 'acl', 'missing']) {
     const { view, record, saves, fields } = personDropFixture('basicWeek');
 
-    if (mode === 'readOnly') fields.users.readOnly = true;
+    if (mode === 'readOnly') {
+      fields.users.readOnly = true;
+    }
 
-    if (mode === 'acl')
+    if (mode === 'acl') {
       view.getAcl = () => ({
         checkModel: () => true,
-        checkField: (scope, field) => field !== 'users',
+        checkField: (scope, field) => field !== 'users'
       });
+    }
 
-    if (mode === 'missing') delete record.usersIds;
+    if (mode === 'missing') {
+      delete record.usersIds;
+    }
 
     await view.fetchEvents('from', 'to', () => {});
     let reverted = false;
@@ -1555,15 +1594,20 @@ test('collaborator permission failures never fall back to reassignment', async (
     fields.collaborators = { type: 'linkMultiple' };
     record.collaboratorsIds = [];
 
-    if (mode === 'readOnly') fields.collaborators.readOnly = true;
+    if (mode === 'readOnly') {
+      fields.collaborators.readOnly = true;
+    }
 
-    if (mode === 'acl')
+    if (mode === 'acl') {
       view.getAcl = () => ({
         checkModel: () => true,
-        checkField: (scope, name) => name !== 'collaborators',
+        checkField: (scope, name) => name !== 'collaborators'
       });
+    }
 
-    if (mode === 'missing') delete record.collaboratorsIds;
+    if (mode === 'missing') {
+      delete record.collaboratorsIds;
+    }
 
     await view.fetchEvents('from', 'to', () => {});
     let reverted = false;
@@ -1619,7 +1663,11 @@ test('static Day, Week, and Month use only captured IDs while inactive visibilit
     view.getPreferences = () => ({ get: (key) => values[key] });
     const calls = [];
     espo.Ajax.postRequest = async (url, body) => {
-      if (url === 'CalendarPlus/WorkingTimeRanges') return { ranges: [] };
+      if (url === 'CalendarPlus/WorkingTimeRanges') {
+        return {
+          ranges: []
+        };
+      }
 
       calls.push(body);
       const all = body.userIdList.map((id) => ({ id, name: id }));
@@ -1695,7 +1743,9 @@ test('completed and canceled shared events shade both gradient colors and solid 
           element.style.backgroundImage.includes(ended ? `faded(${person})` : person),
           true,
         );
-      } else assert.equal(element.style.backgroundImage, '');
+      } else {
+        assert.equal(element.style.backgroundImage, '');
+      }
     }
     assert.equal(
       shades.every(([, amount]) => amount === 0.4),
@@ -1932,45 +1982,26 @@ test('a selected search result reveals hidden-user columns and bypasses status a
 
 test('a late Week response cannot replace events already loaded into shared Day columns', async () => {
   const { view, espo } = fixture('basicWeek');
-  view.getUser = () => ({ id: 'ann' });
   let releaseOld;
-  let filterStarted;
-  const oldFiltering = new Promise((resolve) => {
-    filterStarted = resolve;
-  });
-  view.eventTooltip.loadDetails = async ({ extendedProps }) => {
-    if (extendedProps.recordId === 'old') {
-      filterStarted();
-      return new Promise((resolve) => {
-        releaseOld = resolve;
-      });
+  let started;
+  const waiting = new Promise((resolve) => { started = resolve; });
+  espo.Ajax.getRequest = async (url, query) => {
+    if (query.from === 'old-week') {
+      started();
+      return new Promise((resolve) => { releaseOld = resolve; });
     }
-    return { usersColumns: { ann: { status: 'Accepted' } } };
+    return [{ id: 'new', scope: 'Meeting', userIdList: ['ann'], title: 'New event' }];
   };
-  espo.Ajax.getRequest = async (url, query) => [
-    {
-      id: query.from === 'old-week' ? 'old' : 'new',
-      recordId: query.from === 'old-week' ? 'old' : 'new',
-      scope: 'Meeting',
-      userIdList: ['ann'],
-      title: 'Event',
-    },
-  ];
   let oldCallbacks = 0;
-  const oldRequest = view.fetchEvents('old-week', 'old-week-end', () => {
-    oldCallbacks++;
-  });
-  await oldFiltering;
+  const old = view.fetchEvents('old-week', 'old-end', () => { oldCallbacks++; });
+  await waiting;
   view.viewMode = 'agendaDay';
-  await view.fetchEvents('new-day', 'new-day-end', () => {});
-  assert.equal(view.sharedEvents[0].id, 'new');
-  releaseOld({ usersColumns: { ann: { status: 'Accepted' } } });
-  await oldRequest;
+  await view.fetchEvents('new-day', 'new-end', () => {});
+  releaseOld([{ id: 'old', scope: 'Meeting', userIdList: ['ann'], title: 'Old event' }]);
+  await old;
   assert.equal(oldCallbacks, 0);
   assert.equal(view.sharedEvents[0].id, 'new');
-  view.renderDayColumns();
-  const ann = view.dayCalendars.find((item) => item.userId === 'ann');
-  assert.equal(ann.calendar.sources[0][0].id, 'new');
+  assert.equal(view.dayCalendars[0].calendar.sources[0][0].id, 'new');
 });
 
 test('touch event taps and focus restored after closing details never schedule tooltips', async () => {
@@ -2096,7 +2127,9 @@ test('custom Day shows each person’s non-working hours only in their own colum
   const original = espo.Ajax.postRequest;
   let workingQuery;
   espo.Ajax.postRequest = async (url, body) => {
-    if (url !== 'CalendarPlus/WorkingTimeRanges') return original(url, body);
+    if (url !== 'CalendarPlus/WorkingTimeRanges') {
+      return original(url, body);
+    }
     workingQuery = body;
     return {
       ranges: [
@@ -2135,7 +2168,9 @@ test('late Day working-hour responses cannot overwrite a newer calendar view', a
     started = resolve;
   });
   espo.Ajax.postRequest = (url, body) => {
-    if (url !== 'CalendarPlus/WorkingTimeRanges') return original(url, body);
+    if (url !== 'CalendarPlus/WorkingTimeRanges') {
+      return original(url, body);
+    }
     started();
     return new Promise((resolve) => {
       release = resolve;
@@ -2157,4 +2192,67 @@ test('late Day working-hour responses cannot overwrite a newer calendar view', a
     view.sharedEvents.some((event) => event.display === 'background'),
     false,
   );
+});
+
+
+test('repeated layout syncs retain callbacks, legend nodes, and Day event sources', async () => {
+  for (const mode of ['basicDay', 'basicWeek', 'month']) {
+    const { view } = fixture(mode);
+    await view.fetchEvents('from', 'to', () => {});
+    const callbacks = { ...view.calendar.options };
+    const buttons = view.legendButtons;
+    const columns = view.dayCalendars.map(({ calendar }) => ({
+      calendar,
+      events: calendar.sources[0],
+    }));
+    let replacements = 0;
+    view.calendar.setOption = () => { replacements++; };
+    view.syncSharedLayout();
+    view.syncSharedLayout();
+    assert.equal(replacements, 0, mode);
+    assert.equal(view.legendButtons, buttons, mode);
+    assert.equal(view.calendar.options.eventContent, callbacks.eventContent, mode);
+    for (const { calendar, events } of columns) assert.equal(calendar.sources[0], events);
+
+    // New data must still reach existing columns after a save/refetch.
+    await view.fetchEvents('from', 'to', () => {});
+    for (const { calendar, events } of columns) assert.notEqual(calendar.sources[0], events);
+  }
+});
+
+
+test('one calendar load supplies all data and hovering never fetches a record', async () => {
+  const { view, loadCalls, espo } = fixture('basicWeek');
+  view.getModelFactory = () => { throw new Error('Unexpected record request'); };
+  await view.fetchEvents('from', 'to', () => {});
+  assert.equal(loadCalls.length, 1);
+  const event = tooltipEvent();
+  event.extendedProps.calendarPlusDetails = { location: 'Response location' };
+  assert.equal((await view.eventTooltip.loadDetails(event)).location, 'Response location');
+  assert.equal(loadCalls.length, 1);
+  view.sharedEventsById.set(event.id, { calendarPlusDetails: null });
+  assert.equal(await view.eventTooltip.loadDetails(event), null, 'new permission denial overrides old event details');
+  view.updateModel({ entityType: 'Meeting', id: 'details' });
+  await view.fetchEvents('from', 'to', () => {});
+  assert.equal(loadCalls.length, 2);
+  assert.equal(view.eventTooltip.cache, undefined);
+});
+
+test('custom calendar dates remain authoritative for tooltip times', async () => {
+  const { view } = fixture('basicWeek');
+  const event = tooltipEvent('Session');
+
+  // Espo's custom calendar query has normalized dateEndScheduled as dateEnd.
+  event.extendedProps.dateEnd = '2026-11-05 11:30:00';
+  event.extendedProps.calendarPlusDetails = {
+    name: 'Scheduled session',
+    location: 'Room A',
+  };
+
+  const details = await view.eventTooltip.loadDetails(event);
+  const summary = view.eventTooltip.detailsFor(event, details);
+  const end = summary.rows.find((row) => row.label === 'dateEnd');
+
+  assert.equal(end.value, '2026-11-05 11:30:00');
+  assert.equal(summary.title, 'Scheduled session');
 });

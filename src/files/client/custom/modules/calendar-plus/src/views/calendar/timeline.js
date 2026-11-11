@@ -84,8 +84,9 @@ define('calendar-plus:views/calendar/timeline', [
       if (
         !this.timeline ||
         (this.settingsTimeline === this.timeline && this.timelineSettingsSignature === signature)
-      )
+      ) {
         return;
+      }
 
       const hiddenDates = this.hiddenDatesForRange(showWeekends, range);
 
@@ -95,18 +96,23 @@ define('calendar-plus:views/calendar/timeline', [
       this.timelineSettingsSignature = signature;
       this.timelineHasHiddenDates = !!hiddenDates.length;
 
-      if (apply) this.timeline.setOptions({ hiddenDates });
+      if (apply) {
+        this.timeline.setOptions({
+          hiddenDates
+        });
+      }
     }
 
     hiddenDatesForRange(showWeekends, range) {
       const hiddenDates = [];
 
-      if (!showWeekends)
+      if (!showWeekends) {
         hiddenDates.push({
           start: WEEKEND_START_REFERENCE,
           end: WEEKEND_END_REFERENCE,
-          repeat: 'weekly',
+          repeat: 'weekly'
         });
+      }
 
       if (range.start !== '00:00:00' || range.end !== '24:00:00') {
         // Anchor the overnight gap to a reference day; vis repeats it daily in local time.
@@ -153,19 +159,24 @@ define('calendar-plus:views/calendar/timeline', [
     }
 
     includeSearchResult(events) {
-      if (!this.searchResult?.calendarUserIds?.length) return events;
+      if (!this.searchResult?.calendarUserIds?.length) {
+        return events;
+      }
 
       const result = [...events];
 
       for (const userId of this.searchResult.calendarUserIds) {
         if (
           result.some((event) => Definitions.isSearchResult(this, event) && event.group === userId)
-        )
+        ) {
           continue;
+        }
 
         const event = this.convertEvent({ ...this.searchResult, userId });
 
-        if (event) result.push(event);
+        if (event) {
+          result.push(event);
+        }
       }
 
       return result;
@@ -199,7 +210,9 @@ define('calendar-plus:views/calendar/timeline', [
     }
 
     getSelectedTimeline() {
-      if (this.isCustomViewAvailable === false) return;
+      if (this.isCustomViewAvailable === false) {
+        return;
+      }
 
       return (
         this.options.calendarItem ||
@@ -226,7 +239,9 @@ define('calendar-plus:views/calendar/timeline', [
     }
 
     selectMode(mode) {
-      if (mode === 'timeline') this.getStorage().set('calendar', 'timelineType', 'shared');
+      if (mode === 'timeline') {
+        this.getStorage().set('calendar', 'timelineType', 'shared');
+      }
 
       return super.selectMode(mode);
     }
@@ -281,7 +296,9 @@ define('calendar-plus:views/calendar/timeline', [
     }
 
     updateTimelineControls() {
-      if (this.hasView('modeButtons')) this.getModeButtonsView().reRender();
+      if (this.hasView('modeButtons')) {
+        this.getModeButtonsView().reRender();
+      }
     }
 
     actionShowSharedCalendarOptions() {
@@ -321,6 +338,7 @@ define('calendar-plus:views/calendar/timeline', [
 
         // Use the same detailed tooltip as the grid calendars instead of vis's title popup.
         delete event.title;
+        event.calendarPlusDetails = record.calendarPlusDetails;
 
         if (record.scope && event.type !== 'background') {
           this.tooltipEvents.set(event.id, {
@@ -341,7 +359,9 @@ define('calendar-plus:views/calendar/timeline', [
     syncTimelineTooltips() {
       const root = this.$timeline?.get(0);
 
-      if (!root) return;
+      if (!root) {
+        return;
+      }
 
       const elements = new Set(root.querySelectorAll('.vis-item[data-id]'));
 
@@ -355,7 +375,9 @@ define('calendar-plus:views/calendar/timeline', [
       for (const element of elements) {
         const event = this.tooltipEvents.get(element.getAttribute('data-id'));
 
-        if (!event) continue;
+        if (!event) {
+          continue;
+        }
 
         this.eventAppearances.set(element, { event });
         this.eventTooltip.attach(element);
@@ -365,7 +387,9 @@ define('calendar-plus:views/calendar/timeline', [
 
     runFetch() {
       // Initial loading creates the timeline through afterRender's callback.
-      if (!this.timeline) return;
+      if (!this.timeline) {
+        return;
+      }
 
       return super.runFetch();
     }
@@ -401,75 +425,75 @@ define('calendar-plus:views/calendar/timeline', [
     }
 
     async fetchEvents(from, to, callback) {
-      this.eventTooltip.refresh();
-      this.tooltipEvents.clear();
-
       const revision = (this.fetchRevision = (this.fetchRevision || 0) + 1);
-
-      const deliver = async (events) => {
-        events = this.includeSearchResult(events);
-
-        if (Definitions.shouldFilterEvents(this, events)) {
-          events = await Definitions.filterEvents(this, events);
-        }
-
-        if (this.removed || revision !== this.fetchRevision) return;
-
-        callback(events);
-
-        this.applyTimelineEventLayout(events);
-
-        this.syncTimelineTooltips();
-        this.$el
-          ?.find('.calendar-type-button-group button[data-toggle="dropdown"]')
-          .prop('disabled', false);
+      const current = () => !this.removed && revision === this.fetchRevision;
+      const item = this.getMembershipSelection();
+      const start = from.clone().subtract(this.leftMargin, 'seconds');
+      const end = to.clone().add(this.rightMargin, 'seconds');
+      const format = this.getDateTime().internalDateTimeFormat;
+      const request = {
+        type: 'timeline',
+        from: start.clone().utc().format(format),
+        to: end.clone().utc().format(format),
+        scopeList: this.enabledScopeList,
       };
 
-      const item = this.getMembershipSelection();
-
       if (item) {
-        try {
-          const includeInactive = Definitions.showInactiveUsers(
-            this.getPreferences(),
-            this.mode || item.routeMode || 'timeline',
-          );
-          const data = await Espo.Ajax.postRequest(
-            'CalendarPlus/Users',
-            Definitions.membershipSelection(item, includeInactive),
-          );
-
-          if (this.removed || revision !== this.fetchRevision) return;
-
-          this.userList = data.users;
-          this.initGroupsDataSet();
-
-          if (this.timeline) this.timeline.setGroups(this.groupsDataSet);
-
-          if (!this.userList.length) {
-            this.fetchedStart = from.clone().subtract(this.leftMargin, 'seconds');
-            this.fetchedEnd = to.clone().add(this.rightMargin, 'seconds');
-            deliver([]);
-            Espo.Ui.notify();
-
-            return;
-          }
-        } catch (e) {
-          if (!this.removed && revision === this.fetchRevision) {
-            this.userList = [];
-            this.initGroupsDataSet();
-
-            if (this.timeline) this.timeline.setGroups(this.groupsDataSet);
-
-            this.fetchedStart = from.clone();
-            this.fetchedEnd = to.clone();
-            deliver([]);
-          }
-
-          return;
-        }
+        request.selection = Definitions.membershipSelection(
+          item,
+          Definitions.showInactiveUsers(this.getPreferences(), this.mode || item.routeMode || 'timeline'),
+        );
+      } else if (this.options.userId) {
+        request.userId = this.options.userId;
       }
 
-      super.fetchEvents(from, to, deliver);
+      this.eventTooltip.refresh();
+      if (!this.options.suppressLoadingAlert) {
+        Espo.Ui.notifyWait();
+      }
+
+      try {
+        const data = await Espo.Ajax.postRequest('CalendarPlus/Load', request);
+
+        if (!current()) {
+          return;
+        }
+
+        this.userList = data.users;
+        this.initGroupsDataSet();
+        if (this.timeline) {
+          this.timeline.setGroups(this.groupsDataSet);
+        }
+        this.tooltipEvents.clear();
+        let events = this.includeSearchResult(this.convertEventList(data.events));
+        events = Definitions.filterEvents(this, events);
+
+        if (!current()) {
+          return;
+        }
+
+        this.fetchedStart = start;
+        this.fetchedEnd = end;
+        callback(events);
+        this.applyTimelineEventLayout(events);
+        this.syncTimelineTooltips();
+        this.$el?.find('.calendar-type-button-group button[data-toggle="dropdown"]').prop('disabled', false);
+        Espo.Ui.notify();
+      } catch (error) {
+        if (!current()) {
+          return;
+        }
+
+        this.userList = [];
+        this.initGroupsDataSet();
+        if (this.timeline) {
+          this.timeline.setGroups(this.groupsDataSet);
+        }
+        this.fetchedStart = start;
+        this.fetchedEnd = end;
+        callback([]);
+        Espo.Ui.error(this.translate('Could not load shared calendar', 'messages', 'Calendar'));
+      }
     }
   };
 });

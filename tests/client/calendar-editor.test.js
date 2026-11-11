@@ -108,7 +108,9 @@ function fixture(item = null) {
     save: async (data) => {
       Object.assign(state, data);
 
-      if (state.fail) throw new Error('Save failed');
+      if (state.fail) {
+        throw new Error('Save failed');
+      }
     },
   });
 
@@ -560,7 +562,9 @@ function inactiveMenuFixture(state = {}, mode = 'view-grid', fail = false) {
       saves.push({ data, options });
       Object.assign(state, data);
 
-      if (fail) throw new Error('Save failed');
+      if (fail) {
+        throw new Error('Save failed');
+      }
     },
   };
   const view = new Buttons();
@@ -900,7 +904,9 @@ function settingsFixture({
         saves.push({ data, options });
         Object.assign(state, data);
 
-        if (fail) throw new Error();
+        if (fail) {
+          throw new Error();
+        }
       },
     }),
     getConfig: () => ({ get: (key) => config[key] }),
@@ -1080,52 +1086,23 @@ test('all additional view options save without overwriting other view settings',
   assert.equal(state.calendarPlusViewSettings.other.showWeekends, false);
 });
 
-test('declined-event filter uses the current attendee response, preserves canceled and unreadable events, and bounds requests', async () => {
+test('declined-event filtering uses inline responses without loading records', () => {
   const settings = { showDeclinedEvents: false };
-  let active = 0,
-    peak = 0,
-    requests = 0;
   const view = {
-    mode: 'month',
-    getPreferences: () => ({ get: () => ({ month: settings }) }),
+    mode: 'month', getPreferences: () => ({ get: () => ({ month: settings }) }),
     getUser: () => ({ id: 'me' }),
-    eventTooltip: {
-      loadDetails: async (event) => {
-        requests++;
-        active++;
-        peak = Math.max(peak, active);
-        await Promise.resolve();
-        active--;
-
-        if (event.extendedProps.recordId === 'denied') return null;
-
-        return {
-          usersColumns: {
-            me: { status: event.extendedProps.recordId === 'declined' ? 'Declined' : 'Accepted' },
-            other: { status: 'Declined' },
-          },
-        };
-      },
-    },
+    eventTooltip: { loadDetails: () => { throw new Error('No request allowed'); } },
   };
-  const events = ['declined', 'canceled', 'denied', 'accepted', 'more1', 'more2'].map(
-    (recordId) => ({
-      scope: 'Meeting',
-      recordId,
-      status: recordId === 'canceled' ? 'Not Held' : 'Planned',
-    }),
-  );
-  events.push({ scope: 'Task', recordId: 'task' }, { type: 'background' });
-  const filtered = await definitions.filterEvents(view, events);
-  assert.deepEqual(
-    Array.from(filtered, (event) => event.recordId),
-    ['canceled', 'denied', 'accepted', 'more1', 'more2', 'task', undefined],
-  );
-  assert.equal(requests, 6);
-  assert.ok(peak <= 4);
+  const events = ['declined', 'canceled', 'denied', 'accepted'].map((recordId) => ({
+    scope: 'Meeting', recordId, status: recordId === 'canceled' ? 'Not Held' : 'Planned',
+    calendarPlusDetails: recordId === 'denied' ? null : {
+      usersColumns: { me: { status: recordId === 'declined' ? 'Declined' : 'Accepted' } },
+    },
+  }));
+  assert.deepEqual(Array.from(definitions.filterEvents(view, events), (event) => event.recordId),
+    ['canceled', 'denied', 'accepted']);
   settings.showDeclinedEvents = true;
-  assert.equal(await definitions.filterEvents(view, events), events);
-  assert.equal(requests, 12);
+  assert.equal(definitions.filterEvents(view, events), events);
 });
 
 test('view Settings groups related controls into labeled panels and omits unavailable panels', () => {
@@ -1209,6 +1186,7 @@ test('visible declined invitations get their own class and faded style without m
     mode: 'month',
     getPreferences: () => ({ get: () => ({}) }),
     getUser: () => ({ id: 'me' }),
+    isSharedTimeGrid: () => true,
     eventTooltip: {
       loadDetails: async ({ extendedProps }) => ({
         usersColumns: {
@@ -1220,7 +1198,7 @@ test('visible declined invitations get their own class and faded style without m
     styleDeclinedEvent: (event) => styles.push(event.recordId),
   };
   const events = [
-    { scope: 'Meeting', recordId: 'declined', className: ['existing'] },
+    { scope: 'Meeting', recordId: 'declined', className: ['existing'], calendarPlusDetails: { usersColumns: { me: { status: 'Declined' } } } },
     { scope: 'Call', recordId: 'accepted', className: 'existing' },
   ];
   assert.equal(definitions.shouldFilterEvents(view, events), true);
@@ -1230,6 +1208,36 @@ test('visible declined invitations get their own class and faded style without m
   assert.deepEqual(Array.from(events[0].className), ['existing', 'cp-event-declined']);
   assert.equal(events[1].isDeclined, undefined);
   assert.deepEqual(styles, ['declined']);
+});
+
+test('personal Meeting and Call events avoid redundant attendee detail requests', async () => {
+  let requests = 0;
+  const settings = {};
+  const view = {
+    mode: 'month',
+    getPreferences: () => ({ get: () => ({ month: settings }) }),
+    getUser: () => ({ id: 'me' }),
+    isSharedTimeGrid: () => false,
+    getMetadata: () => ({ get: () => ({ type: 'enum' }) }),
+    eventTooltip: {
+      loadDetails: async () => {
+        requests++;
+
+        return null;
+      },
+    },
+  };
+  const events = [
+    { scope: 'Meeting', recordId: 'meeting' },
+    { scope: 'Call', recordId: 'call' },
+  ];
+
+  assert.equal(definitions.shouldFilterEvents(view, events), false);
+  assert.equal(await definitions.filterEvents(view, events), events);
+  settings.showDeclinedEvents = false;
+  assert.equal(definitions.shouldFilterEvents(view, events), true);
+  assert.equal(await definitions.filterEvents(view, events), events);
+  assert.equal(requests, 0);
 });
 
 test('search-revealed events bypass canceled and declined hiding without changing the saved filters', async () => {
@@ -1608,4 +1616,13 @@ test('calendar styles use Espo stylesheet registration for cache-busting and edi
     const template = readFileSync(new URL(`../res/templates/calendar/${name}.tpl`, root), 'utf8');
     assert.equal(template.includes('/css/calendar'), false);
   }
+});
+
+
+test('filtering inline attendance does not depend on a tooltip loader', () => {
+  const view = {
+    mode: 'month', getPreferences: () => ({ get: () => ({}) }), getUser: () => ({ id: 'me' }),
+  };
+  const events = Array.from({ length: 100 }, (_, i) => ({ scope: 'Meeting', recordId: `${i}` }));
+  assert.equal(definitions.filterEvents(view, events), events);
 });

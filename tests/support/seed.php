@@ -48,6 +48,17 @@ foreach (['all', 'team', 'no'] as $level) {
     'assignmentPermission' => 'all',
   ]);
 }
+$detailAccess = clone $access;
+$detailAccess->Meeting = (object) ['read' => 'own', 'create' => 'yes', 'edit' => 'own', 'delete' => 'own'];
+$roles['details'] = fixtureEntity('Role', 'role-details', [
+  'name' => '[CP Test] Detail restrictions', 'data' => $detailAccess,
+  'fieldData' => (object) ['Meeting' => (object) [
+    'users' => (object) ['read' => 'no', 'edit' => 'no'],
+    'location' => (object) ['read' => 'no', 'edit' => 'no'],
+  ]],
+  'userCalendarPermission' => 'all', 'userPermission' => 'all',
+]);
+
 $teamNames = ['success' => 'Customer Success', 'delivery' => 'Delivery', 'sales' => 'Sales', 'operations' => 'Operations', 'leadership' => 'Leadership'];
 $teams = [];
 foreach ($teamNames as $key => $name) {
@@ -84,7 +95,7 @@ foreach ($roster as $index => [$key, $first, $last]) {
   $people[$key] = ['id' => $person->getId(), 'name' => "$first $last", 'username' => 'cp_' . $key, 'password' => $password, 'teamsIds' => $ids, 'isActive' => $key !== 'james'];
 }
 $accounts = [];
-foreach (['admin' => ['admin', 'all'], 'teamOnly' => ['regular', 'team'], 'personalOnly' => ['regular', 'no'], 'api' => ['api', 'all']] as $key => [$type, $level]) {
+foreach (['admin' => ['admin', 'all'], 'teamOnly' => ['regular', 'team'], 'personalOnly' => ['regular', 'no'], 'api' => ['api', 'all'], 'detailsRestricted' => ['regular', 'details']] as $key => [$type, $level]) {
   $entity = fixtureEntity('User', 'account-' . $key, [
     'userName' => 'cp_' . strtolower($key), 'firstName' => 'Calendar Test', 'lastName' => ucfirst($key),
     'type' => $type, 'isActive' => true, 'password' => $passwordHash->hash($password),
@@ -138,6 +149,16 @@ foreach (['meeting' => ['Meeting', 'Drag meeting', '10:00:00', '11:00:00'], 'tas
   else fixtureLinks($event, 'users', [$people['amelia']['id']], [$people['amelia']['id'] => ['status' => 'Accepted']]);
   $special[$key] = ['id' => $event->getId(), 'scope' => $type, 'name' => '[CP Test] ' . $title];
 }
+$detailFixture = fixtureEntity('Meeting', 'detail-restricted', [
+  'name' => '[CP Test] Restricted detail projection',
+  'assignedUserId' => $accounts['detailsRestricted']['id'],
+  'dateStart' => "$date 17:00:00", 'dateEnd' => "$date 17:30:00",
+  'status' => 'Planned', 'location' => 'Private location',
+]);
+
+fixtureLinks($detailFixture, 'users', [$people['amelia']['id'], $accounts['detailsRestricted']['id']],
+  [$people['amelia']['id'] => ['status' => 'Declined'], $accounts['detailsRestricted']['id'] => ['status' => 'Accepted']]);
+
 $calendars = [];
 foreach (['week' => 'agendaWeek', 'day' => 'agendaDay', 'month' => 'month', 'timeline' => 'timeline'] as $key => $mode) {
   $calendars[$key] = [
@@ -166,7 +187,8 @@ $manifest = [
   'from' => $week->format('Y-m-d'), 'to' => $week->modify('+4 days')->format('Y-m-d'),
   'people' => $people, 'accounts' => $accounts, 'calendars' => $calendars, 'events' => $special,
   'preferences' => $preferences, 'teams' => array_map(fn ($team) => ['id' => $team->getId(), 'name' => $team->get('name')], $teams),
-  'eventCount' => $eventCount + count($special),
+  'detailFixtureId' => $detailFixture->getId(),
+  'eventCount' => $eventCount + count($special) + 1,
 ];
 file_put_contents(repositoryRoot() . '/tests/.runtime/fixtures.json', json_encode($manifest, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
 echo sprintf("Seeded %d named users across %d teams, plus test accounts, with %d events.\n", count($people), count($teams), $manifest['eventCount']);
