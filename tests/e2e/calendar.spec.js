@@ -128,6 +128,74 @@ test("each calendar load uses one complete response without follow-up data reque
   }
 });
 
+test('timeline tooltips stay inside the calendar when an event starts offscreen', async ({ page, request }, testInfo) => {
+  test.skip(testInfo.project.name !== 'chromium', 'Hover tooltips require a mouse.');
+
+  const endpoint = `/api/v1/Meeting/${f.events.meeting.id}`;
+  const headers = authentication();
+  const originalResponse = await request.get(endpoint, { headers });
+  const original = await originalResponse.json();
+  const previousDay = new Date(`${f.date}T00:00:00Z`);
+
+  previousDay.setUTCDate(previousDay.getUTCDate() - 1);
+
+  const changed = await request.put(endpoint, {
+    headers,
+    data: {
+      dateStart: `${previousDay.toISOString().slice(0, 10)} 12:00:00`,
+      dateEnd: original.dateEnd,
+    },
+  });
+
+  expect(changed.ok()).toBeTruthy();
+
+  try {
+    await page.goto(calendarUrl('view-cp-test-timeline'));
+
+    const event = page.locator('.vis-item.vis-range:visible')
+      .filter({ hasText: f.events.meeting.name }).first();
+
+    await expect(event).toBeVisible();
+    await page.waitForLoadState('networkidle');
+
+    const visible = await event.evaluate((element) => {
+      const calendar = element.closest('.vis-panel.vis-center');
+      const clip = calendar.getBoundingClientRect();
+      const rect = element.getBoundingClientRect();
+      const left = Math.max(rect.left, clip.left);
+      const right = Math.min(rect.right, clip.right);
+
+      return {
+        left: clip.left,
+        right: clip.right,
+        eventLeft: rect.left,
+        x: left + (right - left) / 2,
+        y: rect.top + rect.height / 2,
+      };
+    });
+
+    expect(visible.eventLeft).toBeLessThan(visible.left);
+
+    await page.mouse.move(visible.x, visible.y);
+
+    const tooltip = page.locator('.cp-calendar-event-tooltip');
+
+    await expect(tooltip).toBeVisible();
+
+    const position = await tooltip.boundingBox();
+
+    expect(position.x).toBeGreaterThanOrEqual(visible.left);
+    expect(position.x + position.width).toBeLessThanOrEqual(visible.right);
+  } finally {
+    const restored = await request.put(endpoint, {
+      headers,
+      data: { dateStart: original.dateStart, dateEnd: original.dateEnd },
+    });
+
+    expect(restored.ok()).toBeTruthy();
+  }
+});
+
 test('grid and timeline tooltips show actual attendees outside the selected calendar', async ({ page, request }, testInfo) => {
   test.skip(testInfo.project.name !== 'chromium', 'Hover tooltips require a mouse.');
 

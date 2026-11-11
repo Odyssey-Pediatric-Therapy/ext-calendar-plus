@@ -447,17 +447,49 @@ define('calendar-plus:views/calendar/event-tooltip', ['calendar-plus:calendar-de
       return attendee;
     }
 
+    horizontalBounds(anchor) {
+      const bounds = { left: 0, right: document.documentElement.clientWidth };
+      let calendar = anchor.closest?.('.vis-panel.vis-center');
+
+      if (!calendar) {
+        calendar = anchor.closest?.('.calendar-plus-day-columns');
+      }
+
+      if (!calendar) {
+        calendar = this.view.el || this.view.$el?.get?.(0);
+      }
+
+      if (calendar) {
+        const rect = calendar.getBoundingClientRect();
+
+        bounds.left = Math.max(bounds.left, rect.left);
+        bounds.right = Math.min(bounds.right, rect.right);
+      }
+
+      return bounds;
+    }
+
     position({ panel, anchor }) {
       const margin = 12;
       const viewport = document.documentElement;
+      const bounds = this.horizontalBounds(anchor);
       const rect = anchor.getBoundingClientRect();
-      const size = panel.getBoundingClientRect();
-      const left = Math.min(rect.left, viewport.clientWidth - size.width - margin);
-      const below = rect.bottom + 8;
-      const top =
-        below + size.height <= viewport.clientHeight - margin ? below : rect.top - size.height - 8;
 
-      panel.style.left = `${Math.max(margin, left)}px`;
+      panel.style.maxWidth = `${Math.max(0, bounds.right - bounds.left - margin * 2)}px`;
+
+      const size = panel.getBoundingClientRect();
+      const visibleLeft = Math.max(rect.left, bounds.left);
+      const left = Math.max(
+        bounds.left + margin,
+        Math.min(visibleLeft, bounds.right - size.width - margin),
+      );
+      let top = rect.bottom + 8;
+
+      if (top + size.height > viewport.clientHeight - margin) {
+        top = rect.top - size.height - 8;
+      }
+
+      panel.style.left = `${left}px`;
       panel.style.top = `${Math.max(margin, Math.min(top, viewport.clientHeight - size.height - margin))}px`;
     }
   };

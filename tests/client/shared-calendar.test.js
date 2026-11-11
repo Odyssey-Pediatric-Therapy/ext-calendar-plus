@@ -2292,6 +2292,51 @@ test('events with only an assignee omit calendar membership and empty attendee r
 });
 
 
+test('tooltips stay inside the visible calendar when an event extends beyond either edge', () => {
+  const { view } = fixture('basicWeek');
+  const calendar = new Element();
+  const anchor = new Element();
+  const panel = new Element();
+
+  calendar.bounds = { left: 200, right: 800, top: 100, bottom: 700 };
+  anchor.closest = () => calendar;
+  panel.getBoundingClientRect = () => ({ width: 240, height: 120 });
+
+  anchor.bounds = { left: -400, right: 500, top: 300, bottom: 330 };
+  view.eventTooltip.position({ panel, anchor });
+
+  assert.equal(panel.style.left, '212px');
+  assert.equal(panel.style.top, '338px');
+
+  anchor.bounds = { left: 780, right: 1100, top: 750, bottom: 790 };
+  view.eventTooltip.position({ panel, anchor });
+
+  assert.equal(panel.style.left, '548px');
+  assert.equal(panel.style.top, '622px');
+});
+
+test('tooltip width shrinks to fit a narrow calendar viewport', () => {
+  const { view } = fixture('basicWeek');
+  const calendar = new Element();
+  const anchor = new Element();
+  const panel = new Element();
+
+  calendar.bounds = { left: 200, right: 400, top: 100, bottom: 700 };
+  anchor.closest = () => calendar;
+  anchor.bounds = { left: -400, right: 350, top: 300, bottom: 330 };
+  panel.getBoundingClientRect = () => ({
+    width: Math.min(360, Number.parseFloat(panel.style.maxWidth)),
+    height: 120,
+  });
+
+  view.eventTooltip.position({ panel, anchor });
+
+  assert.equal(panel.style.maxWidth, '176px');
+  assert.equal(panel.style.left, '212px');
+  assert.equal(Number.parseFloat(panel.style.left) + panel.getBoundingClientRect().width, 388);
+});
+
+
 test('native Espo event conversion preserves attendee details for grid tooltips', async () => {
   const source = readFileSync(new URL(
     '../../site/client/modules/crm/src/views/calendar/calendar.js', import.meta.url,
