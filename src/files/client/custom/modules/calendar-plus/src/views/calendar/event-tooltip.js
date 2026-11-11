@@ -311,10 +311,6 @@ define('calendar-plus:views/calendar/event-tooltip', ['calendar-plus:calendar-de
       add(view.translate('dateStart', 'fields', scope), start);
       add(view.translate('dateEnd', 'fields', scope), end);
 
-      if ((data.dateStart && !data.dateStartDate) || (data.dateEnd && !data.dateEndDate)) {
-        add(view.translate('Time Zone', 'labels', 'Calendar'), dateTime.getTimeZone?.());
-      }
-
       const assigned = [
         ...new Set([data.assignedUserName, ...names(data.assignedUsersNames)].filter(Boolean)),
       ];
