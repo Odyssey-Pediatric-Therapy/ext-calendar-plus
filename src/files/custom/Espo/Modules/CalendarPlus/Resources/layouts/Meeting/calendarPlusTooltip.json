@@ -1,0 +1,23 @@
+[
+    {
+        "name": "dateStart"
+    },
+    {
+        "name": "dateEnd"
+    },
+    {
+        "name": "assignedUser"
+    },
+    {
+        "name": "assignedUsers"
+    },
+    {
+        "name": ":attendees"
+    },
+    {
+        "name": "status"
+    },
+    {
+        "name": "location"
+    }
+]

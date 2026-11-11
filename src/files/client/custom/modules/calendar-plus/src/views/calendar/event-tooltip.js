@@ -287,6 +287,14 @@ define('calendar-plus:views/calendar/event-tooltip', ['calendar-plus:calendar-de
       const scope = data.scope || event.extendedProps.scope;
       const settings =
         Definitions?.viewSettings(view.getPreferences?.(), view.mode || 'timeline') || {};
+      if (Array.isArray(details?.calendarPlusTooltipFields)) {
+        return {
+          title: data.name || source.title || event.title,
+          type: view.translate(scope, 'scopeNames'),
+          rows: this.layoutRows(scope, data, details.calendarPlusTooltipFields, settings),
+        };
+      }
+
       const rows = [];
 
       const add = (label, value, extra = {}) => {
@@ -367,6 +375,138 @@ define('calendar-plus:views/calendar/event-tooltip', ['calendar-plus:calendar-de
         type: view.translate(scope, 'scopeNames'),
         rows,
       };
+    }
+
+    layoutRows(scope, data, fields, settings) {
+      const rows = [];
+      const switches = {
+        assignedUser: 'tooltipAssignee',
+        assignedUsers: 'tooltipAssignee',
+        ':attendees': 'tooltipAttendees',
+        users: 'tooltipAttendees',
+        contacts: 'tooltipAttendees',
+        leads: 'tooltipAttendees',
+        collaborators: 'tooltipAttendees',
+        status: 'tooltipStatus',
+        location: 'tooltipLocation',
+      };
+
+      for (const field of fields) {
+        if (settings[switches[field]] === false) {
+          continue;
+        }
+
+        if (field === ':attendees') {
+          const participants = this.attendeesFor(scope, data);
+
+          if (participants.length) {
+            rows.push({
+              label: this.view.translate('Attendees', 'labels', 'Calendar'),
+              value: participants.map((person) => person.name).join(', '),
+              participants,
+            });
+          }
+
+          continue;
+        }
+
+        const value = this.formatField(scope, field, data);
+
+        if (value === null || value === '') {
+          continue;
+        }
+
+        let kind = '';
+
+        if (field === 'status') {
+          kind = 'status';
+        }
+
+        rows.push({ label: this.view.translate(field, 'fields', scope), value, kind });
+      }
+
+      return rows;
+    }
+
+    formatField(scope, field, data) {
+      const definition = this.view.getMetadata?.().get(['entityDefs', scope, 'fields', field]) || {};
+      const type = definition.type;
+      const dateTime = this.view.getDateTime();
+
+      if (field === 'dateStart' || field === 'dateEnd') {
+        if (data[field + 'Date']) {
+          return dateTime.toDisplayDate(data[field + 'Date']);
+        }
+      }
+
+      if (type === 'link' || field === 'assignedUser') {
+        return data[field + 'Name'] || null;
+      }
+
+      if (type === 'linkMultiple' || ['assignedUsers', 'collaborators'].includes(field)) {
+        return Object.values(data[field + 'Names'] || {}).filter((value) => typeof value === 'string').join(', ');
+      }
+
+      const value = data[field];
+
+      if (value === undefined || value === null || value === '') {
+        return null;
+      }
+
+      if (type === 'date') {
+        return dateTime.toDisplayDate(value);
+      }
+
+      if (['datetime', 'datetimeOptional'].includes(type) || ['dateStart', 'dateEnd'].includes(field)) {
+        return dateTime.toDisplay(value);
+      }
+
+      if (type === 'bool') {
+        if (value) {
+          return this.view.translate('Yes');
+        }
+
+        return this.view.translate('No');
+      }
+
+      if (type === 'enum') {
+        return this.view.getLanguage?.()?.translateOption(value, field, scope) || String(value);
+      }
+
+      if (Array.isArray(value)) {
+        return value.map((item) => {
+          if (type === 'multiEnum') {
+            return this.view.getLanguage?.()?.translateOption(item, field, scope) || String(item);
+          }
+
+          return String(item);
+        }).join(', ');
+      }
+
+      if (typeof value === 'number') {
+        const numberUtil = this.view.getNumberUtil?.();
+        let formatted = String(value);
+
+        if (numberUtil) {
+          if (type === 'int') {
+            formatted = numberUtil.formatInt(value);
+          } else {
+            formatted = numberUtil.formatFloat(value);
+          }
+        }
+
+        if (type === 'currency') {
+          return [formatted, data[field + 'Currency']].filter(Boolean).join(' ');
+        }
+
+        return formatted;
+      }
+
+      if (typeof value === 'string') {
+        return value;
+      }
+
+      return null;
     }
 
     render(session, details = null) {

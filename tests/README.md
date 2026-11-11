@@ -14,12 +14,16 @@ Commands:
 - `npm run test:seed`: reset fixture records without rebuilding the site.
 - `npm run test:serve`: open the prepared test site at `http://127.0.0.1:8878` for manual inspection.
 
+Set `CP_TEST_DEVELOPER_MODE=1` when running a test command to exercise Espo development-mode loading with individual transpiled extension modules instead of the production bundle.
+
 Browser tests use installed Google Chrome on macOS when available. Otherwise run `npm run test:browsers` to install Chromium into the repository's ignored runtime. `CP_TEST_BROWSER_PATH` selects another Chromium executable. `CP_TEST_PORT` changes the server port; `CP_TEST_PHP` selects the PHP executable.
 
-The fixture includes 15 named users across five teams with overlapping memberships, an inactive user, separate admin and restricted test accounts, and 324 meetings, calls, and tasks over the current Monday–Friday. Times and durations vary throughout the workday, with deliberate overlaps, completed/canceled events, and attendee acceptance states. Four saved calendars cover month, week, day, and timeline. Stable IDs make reseeding repeatable; dates roll forward with the current week.
+The fixture includes 15 named users across five teams with overlapping memberships, an inactive user, separate admin and restricted test accounts, and 325 calendar records, including meetings, calls, tasks, and a custom session over the current Monday–Friday. Times and durations vary throughout the workday, with deliberate overlaps, completed/canceled events, and attendee acceptance states. Four saved calendars cover month, week, day, and timeline. Stable IDs make reseeding repeatable; dates roll forward with the current week.
 
 The ignored `tests/.runtime/fixtures.json` records IDs, dates, and fixture credentials. The default test login is `cp_admin` / `CalendarPlusTest!2026`; override the password using `CP_TEST_PASSWORD` when preparing or seeding. These credentials belong only to the isolated test site.
 
 API tests cover authentication, calendar permissions, team expansion and ordering, inactive-user inclusion, selection validation, saved preferences, persisted event relationships, and complete calendar loads with record and field restrictions. A SQL query-count regression verifies that loading details for 100 meetings takes the same number of SELECT queries as loading one. Browser tests exercise installed extension loading, view switching with real events, the search dialog, and event saves on desktop and mobile. They assert that each calendar load or save uses one complete response, without separate people, event, detail, or working-hours requests. They complement the existing unit tests; they do not guarantee every calendar feature. Failed browser tests retain screenshots and traces in `test-results/`.
 
 For Faker-generated schedules in the local development site, see [Manual calendar fixtures](README-seeding.md). The manual seed and empty scripts are separate from these automated-test fixtures.
+
+Tooltip layout checks cover the native Layout Manager, editing while tooltips are disabled, explicit empty layouts, reset to defaults, generic custom-entity defaults, and projections for scheduled dates, false booleans, and zero currency values.

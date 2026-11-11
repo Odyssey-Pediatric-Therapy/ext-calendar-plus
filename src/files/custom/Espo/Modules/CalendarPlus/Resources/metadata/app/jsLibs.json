@@ -8,5 +8,11 @@
         "path": "client/custom/modules/calendar-plus/lib/html2canvas.min.js",
         "exportsTo": "window",
         "exportsAs": "html2canvas"
+    },
+    "calendar-plus-tooltip-layout": {
+        "path": "client/custom/modules/calendar-plus/tooltip-layout-alias.js",
+        "aliases": [
+            "views/admin/layouts/calendar-plus-tooltip"
+        ]
     }
 }

@@ -5,5 +5,8 @@
     },
     "descriptions": {
         "calendarPlusSettings": "Configure the Calendar Plus extension"
+    },
+    "layouts": {
+        "calendarPlusTooltip": "Calendar Tooltip"
     }
 }

@@ -159,6 +159,14 @@ $detailFixture = fixtureEntity('Meeting', 'detail-restricted', [
 fixtureLinks($detailFixture, 'users', [$people['amelia']['id'], $accounts['detailsRestricted']['id']],
   [$people['amelia']['id'] => ['status' => 'Declined'], $accounts['detailsRestricted']['id'] => ['status' => 'Accepted']]);
 
+$layoutFixture = fixtureEntity('CLayoutSession', 'layout-session', [
+  'name' => '[CP Test] Custom tooltip session',
+  'assignedUserId' => $accounts['admin']['id'],
+  'dateStart' => "$date 10:00:00", 'dateEnd' => "$date 11:00:00",
+  'dateEndScheduled' => "$date 12:30:00", 'location' => 'Room B',
+  'confirmed' => false, 'cost' => 0, 'costCurrency' => 'USD',
+]);
+
 $calendars = [];
 foreach (['week' => 'agendaWeek', 'day' => 'agendaDay', 'month' => 'month', 'timeline' => 'timeline'] as $key => $mode) {
   $calendars[$key] = [
@@ -188,7 +196,8 @@ $manifest = [
   'people' => $people, 'accounts' => $accounts, 'calendars' => $calendars, 'events' => $special,
   'preferences' => $preferences, 'teams' => array_map(fn ($team) => ['id' => $team->getId(), 'name' => $team->get('name')], $teams),
   'detailFixtureId' => $detailFixture->getId(),
-  'eventCount' => $eventCount + count($special) + 1,
+  'layoutFixtureId' => $layoutFixture->getId(),
+  'eventCount' => $eventCount + count($special) + 2,
 ];
 file_put_contents(repositoryRoot() . '/tests/.runtime/fixtures.json', json_encode($manifest, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
 echo sprintf("Seeded %d named users across %d teams, plus test accounts, with %d events.\n", count($people), count($teams), $manifest['eventCount']);

@@ -31,7 +31,7 @@ $pdo->exec("INSERT IGNORE INTO cp_test_environment_guard VALUES ('calendar-plus-
 
 $config = array_replace($config, [
   'siteUrl' => 'http://127.0.0.1:' . (getenv('CP_TEST_PORT') ?: '8878'),
-  'isDeveloperMode' => false,
+  'isDeveloperMode' => getenv('CP_TEST_DEVELOPER_MODE') === '1',
   'useCache' => true,
   'theme' => 'Espo',
   'language' => 'en_US',
@@ -45,6 +45,8 @@ $config = array_replace($config, [
   'calendarPlusTimelineEventGap' => 0,
   'recordsPerPage' => 10,
 ]);
+$config['calendarEntityList'] = array_values(array_unique([...($config['calendarEntityList'] ?? []), 'CLayoutSession']));
+
 $internal['database'] = $database;
 $internal['isInstalled'] = true;
 $internal['instanceId'] = 'calendar-plus-tests';
@@ -66,6 +68,54 @@ for ($index = 0; $index < $zip->numFiles; $index++) {
   file_put_contents($path, $zip->getFromIndex($index));
 }
 $zip->close();
+
+// Custom calendar entity exercises generic defaults and developer-added fields.
+$fixtureResources = $runtime . '/custom/Espo/Custom/Resources/';
+$fixtureMetadata = [
+  'scopes/CLayoutSession' => [
+    'entity' => true, 'object' => true, 'tab' => true, 'acl' => true,
+    'layouts' => true, 'calendar' => true, 'customizable' => true,
+    'type' => 'Event', 'module' => 'Custom',
+  ],
+  'entityDefs/CLayoutSession' => [
+    'fields' => [
+      'dateEndScheduled' => ['type' => 'datetime'],
+      'location' => ['type' => 'varchar'],
+      'confirmed' => ['type' => 'bool'],
+      'cost' => ['type' => 'currency'],
+    ],
+  ],
+];
+
+$eventTemplate = file_get_contents($root . '/site/application/Espo/Core/Templates/Metadata/Event/entityDefs.json');
+$eventTemplate = str_replace('{entityTypeLowerFirst}', 'cLayoutSession', $eventTemplate);
+$fixtureMetadata['entityDefs/CLayoutSession'] = array_replace_recursive(
+  json_decode($eventTemplate, true, 512, JSON_THROW_ON_ERROR),
+  $fixtureMetadata['entityDefs/CLayoutSession'],
+);
+
+foreach ($fixtureMetadata as $name => $definition) {
+  $path = $fixtureResources . 'metadata/' . $name . '.json';
+
+  if (!is_dir(dirname($path))) {
+    mkdir(dirname($path), 0777, true);
+  }
+
+  file_put_contents($path, json_encode($definition, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
+}
+
+foreach (['Controllers', 'Services'] as $kind) {
+  $directory = $runtime . '/custom/Espo/Custom/' . $kind;
+
+  if (!is_dir($directory)) {
+    mkdir($directory, 0777, true);
+  }
+
+  $source = "<?php\n\nnamespace Espo\\Custom\\$kind;\n\n" .
+    "class CLayoutSession extends \\Espo\\Core\\Templates\\$kind\\Event\n{\n}\n";
+
+  file_put_contents($directory . '/CLayoutSession.php', $source);
+}
 
 $app = bootTestApplication();
 $app->getContainer()->getByClass(Espo\Core\DataManager::class)->rebuild();

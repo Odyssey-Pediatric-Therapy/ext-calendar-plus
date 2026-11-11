@@ -2387,3 +2387,36 @@ test('personal-calendar record changes reload the complete attendee projection',
 
   assert.equal(view.refreshes, 3);
 });
+
+test('tooltip layouts control row order, empty layouts, formatting, and attendee indicators', () => {
+  const { view } = fixture('basicWeek');
+  const event = tooltipEvent();
+
+  view.getMetadata = () => ({ get: (path) => ({
+    status: { type: 'enum' },
+    dateEndScheduled: { type: 'datetime' },
+    confirmed: { type: 'bool' },
+    cost: { type: 'currency' },
+  })[path[3]] });
+
+  const data = {
+    calendarPlusTooltipFields: ['status', 'dateEndScheduled', ':attendees', 'confirmed', 'cost'],
+    status: 'Planned',
+    dateEndScheduled: '2026-11-05 12:30:00',
+    usersNames: { bob: 'Bob' },
+    usersColumns: { bob: { status: 'Accepted' } },
+    confirmed: false,
+    cost: 0,
+    costCurrency: 'USD',
+  };
+  const summary = view.eventTooltip.detailsFor(event, data);
+
+  assert.deepEqual(Array.from(summary.rows, (row) => row.label), [
+    'status', 'dateEndScheduled', 'Attendees', 'confirmed', 'cost',
+  ]);
+  assert.equal(summary.rows[1].value, '2026-11-05 12:30:00');
+  assert.equal(summary.rows[2].participants[0].indicator, '✓');
+  assert.equal(summary.rows[3].value, 'No');
+  assert.equal(summary.rows[4].value, '0 USD');
+  assert.equal(view.eventTooltip.detailsFor(event, { calendarPlusTooltipFields: [] }).rows.length, 0);
+});
