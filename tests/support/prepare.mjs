@@ -17,8 +17,9 @@ const runtime = join(root, "tests/.runtime/site");
 
 function run(command, args) {
   const result = spawnSync(command, args, { cwd: root, stdio: "inherit" });
-  if (result.status !== 0)
+  if (result.status !== 0) {
     throw new Error(`${command} failed (${result.status}).`);
+  }
 }
 
 if (!existsSync(join(site, "vendor/autoload.php"))) {
@@ -49,14 +50,17 @@ run(process.execPath, ["build", "--extension"]);
 await mkdir(runtime, { recursive: true });
 for (const name of ["application", "vendor", "html"]) {
   const destination = join(runtime, name);
-  if (!existsSync(destination))
+  if (!existsSync(destination)) {
     await symlink(join(site, name), destination, "dir");
+  }
 }
 await mkdir(join(runtime, "client"), { recursive: true });
 for (const entry of await readdir(join(site, "client"), {
   withFileTypes: true,
 })) {
-  if (entry.name === "custom") continue;
+  if (entry.name === "custom") {
+    continue;
+  }
   const destination = join(runtime, "client", entry.name);
   if (!existsSync(destination)) {
     await symlink(
@@ -84,7 +88,7 @@ await writeFile(
 );
 await writeFile(
   join(runtime, "bootstrap.php"),
-  `<?php\nchdir(__DIR__);\nset_include_path(__DIR__);\nrequire_once __DIR__ . '/vendor/autoload.php';\n`,
+  `<?php\nchdir(__DIR__);\nset_include_path(__DIR__);\n$loader = require __DIR__ . '/vendor/autoload.php';\n$loader->addPsr4('Espo\\\\Modules\\\\', __DIR__ . '/custom/Espo/Modules', true);\n$loader->addPsr4('Espo\\\\Custom\\\\', __DIR__ . '/custom/Espo/Custom', true);\n`,
 );
 run(process.env.CP_TEST_PHP || "php", ["tests/support/setup.php"]);
 run(process.env.CP_TEST_PHP || "php", ["tests/support/seed.php"]);

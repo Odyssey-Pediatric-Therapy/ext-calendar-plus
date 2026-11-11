@@ -73,6 +73,8 @@ class BaseTimeline {
     callback(['event']);
   }
 
+  convertEventList(events) { return events; }
+
   addHandler() {}
 
   on() {}
@@ -80,9 +82,29 @@ class BaseTimeline {
 function fixture(list = []) {
   const espo = {
     Ajax: { postRequest: async () => ({ users: [] }) },
-    Ui: { notify() {} },
+    Ui: { notify() {}, notifyWait() {}, error() {} },
     Utils: { clone: structuredClone, cloneDeep: structuredClone },
   };
+  let resolve = espo.Ajax.postRequest;
+  const transport = (handler) => async (url, body) => {
+    if (url !== 'CalendarPlus/Load') {
+      return handler(url, body);
+    }
+    if (!body.selection) {
+      return {
+        users: [{
+          id: 'me'
+        }],
+        events: ['event'],
+        ranges: []
+      };
+    }
+    const data = await handler('CalendarPlus/Users', body.selection);
+    return { users: data.users || [], events: data.users?.length ? ['event'] : [], ranges: [] };
+  };
+  Object.defineProperty(espo.Ajax, 'postRequest', {
+    get: () => transport(resolve), set: (value) => { resolve = value; },
+  });
   const definitions = load('../../calendar-definitions.js', {}, espo);
   const EventTooltip = load('event-tooltip.js', {}, espo);
   const Timeline = load(
@@ -99,6 +121,9 @@ function fixture(list = []) {
   view.eventAppearances = new Map();
   view.tooltipEvents = new Map();
   view.allowed = true;
+  view.getDateTime = () => ({ internalDateTimeFormat: 'YYYY-MM-DD HH:mm:ss' });
+  view.leftMargin = 0;
+  view.rightMargin = 0;
   const config = {};
   view.allDayScopeList = ['Task', 'Meeting'];
   view.getConfig = () => ({ get: (name) => config[name] });
@@ -125,6 +150,8 @@ function fixture(list = []) {
   return { view, espo, preferences, config };
 }
 const date = {
+  utc() { return this; },
+  format() { return '2026-11-04 00:00:00'; },
   clone() {
     return this;
   },
@@ -188,7 +215,7 @@ test('team and individual IDs resolve before events are fetched', async () => {
   });
   assert.deepEqual(plain(view.userList), [{ id: 'person', name: 'Person' }]);
   assert.deepEqual(result, ['event']);
-  assert.equal(view.baseFetches, 1);
+  assert.equal(view.baseFetches, 0);
 });
 
 test('empty team does not fall back to current user or unfiltered event request', async () => {
@@ -249,12 +276,16 @@ function modalFixture() {
   modal.getPreferences = () => ({
     get: (key) => (key === 'calendarPlusList' ? state.list : []),
     set: (key, value) => {
-      if (key === 'calendarPlusList') state.list = value;
+      if (key === 'calendarPlusList') {
+        state.list = value;
+      }
     },
     save: async (data) => {
       state.list = data.calendarPlusList;
 
-      if (state.fail) throw new Error('Failed');
+      if (state.fail) {
+        throw new Error('Failed');
+      }
     },
   });
   modal.disableButton = () => {};
@@ -348,7 +379,7 @@ test('default Timeline resolves teams and people on every refresh, including emp
     second = events;
   });
   assert.equal(count, 2);
-  assert.equal(view.baseFetches, 1);
+  assert.equal(view.baseFetches, 0);
   assert.deepEqual(plain(second), []);
   assert.deepEqual(plain(view.userList), []);
 });
@@ -439,6 +470,7 @@ test('Timeline removes artificial horizontal collisions on creation without chan
   const options = [];
   const itemSets = [];
   const timeline = {
+    setGroups() {},
     setOptions: (value) => options.push(plain(value)),
     setItems: (value) => itemSets.push(value),
     on() {},
@@ -459,6 +491,7 @@ test('Timeline gap uses admin configuration and refresh reapplies a changed gap 
   let bindings = 0;
   let itemSets = 0;
   const timeline = {
+    setGroups() {},
     setOptions: (value) => gaps.push(value.margin.item.horizontal),
     setItems: () => itemSets++,
     on: () => bindings++,
@@ -535,7 +568,9 @@ test('static saved and default Timelines never re-expand teams and respect inact
     };
     const { view, espo, preferences } = fixture(saved ? [selection] : []);
 
-    if (!saved) preferences.calendarPlusSharedSelection = selection;
+    if (!saved) {
+      preferences.calendarPlusSharedSelection = selection;
+    }
 
     view.setup();
     view.mode = saved ? 'view-timeline-a' : 'timeline';

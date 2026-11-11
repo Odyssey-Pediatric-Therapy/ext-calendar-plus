@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { test, expect } from "@playwright/test";
 import {
   fixtures as f,
@@ -152,8 +153,9 @@ test("fixture events persist owners, attendees, times and statuses", async ({
     expect(saved.assignedUserId).toBe(f.people.amelia.id);
     expect(saved.dateStart).toContain(f.date);
     expect(new Date(saved.dateEnd) > new Date(saved.dateStart)).toBeTruthy();
-    if (event.scope !== "Task")
+    if (event.scope !== "Task") {
       expect(saved.usersIds).toContain(f.people.amelia.id);
+    }
   }
 });
 
@@ -211,4 +213,129 @@ test("attendee and collaborator updates persist without changing the assigned us
       expect(restored.ok()).toBeTruthy();
     }
   }
+});
+
+function calendarLoad(overrides = {}) {
+  return {
+    type: 'grid', from: `${f.from} 00:00:00`, to: `${f.to} 23:59:59`,
+    selection: { userIdList: [f.people.amelia.id], teamIdList: [] },
+    scopeList: ['Meeting', 'Call', 'Task'], agenda: true, workingTime: true,
+    ...overrides,
+  };
+}
+
+test("one calendar response includes events, people, working hours, and complete projections", async ({ request }) => {
+  const response = await request.post('/api/v1/CalendarPlus/Load', {
+    headers: authentication(), data: calendarLoad(),
+  });
+  expect(response.ok()).toBeTruthy();
+  const data = await response.json();
+  expect(data.users.map((user) => user.id)).toEqual([f.people.amelia.id]);
+  expect(Array.isArray(data.ranges)).toBeTruthy();
+  for (const event of Object.values(f.events)) {
+    const record = await (await request.get(`/api/v1/${event.scope}/${event.id}`, {
+      headers: authentication(),
+    })).json();
+    const loaded = data.events.find((item) => item.scope === event.scope && item.id === event.id);
+    expect(loaded).toBeDefined();
+    const projection = loaded.calendarPlusDetails;
+    for (const field of ['name', 'status', 'assignedUserName',
+      'usersNames', 'usersColumns', 'contactsNames', 'contactsColumns', 'leadsNames', 'leadsColumns',
+      'collaboratorsNames']) {
+      if (record[field] !== undefined) {
+        expect(projection[field]).toEqual(record[field]);
+      }
+    }
+    expect(projection).not.toHaveProperty('description');
+    expect(projection).not.toHaveProperty('dateStart');
+    expect(projection).not.toHaveProperty('dateEnd');
+  }
+});
+
+test("calendar loads require authentication, valid ranges and permitted selections", async ({ request }) => {
+  const endpoint = '/api/v1/CalendarPlus/Load';
+  expect((await request.post(endpoint, { data: calendarLoad() })).status()).toBe(401);
+  for (const overrides of [{ from: null }, { to: 'invalid' }, { type: 'bad' },
+    { from: '2026-01-01 00:00:00', to: '2027-01-01 00:00:00' },
+    { selection: [] }, { scopeList: 'bad' }, { workingTime: 'yes' }]) {
+    expect((await request.post(endpoint, {
+      headers: authentication(), data: calendarLoad(overrides),
+    })).status()).toBe(400);
+  }
+  expect((await request.post(endpoint, {
+    headers: authentication(f.accounts.personalOnly), data: calendarLoad(),
+  })).status()).toBe(403);
+  const empty = await request.post(endpoint, {
+    headers: authentication(), data: calendarLoad({ selection: { userIdList: [], teamIdList: [] } }),
+  });
+  expect(await empty.json()).toEqual({ users: [], events: [], ranges: [] });
+});
+
+test("complete calendar loads retain record and field permissions", async ({ request }) => {
+  const response = await request.post('/api/v1/CalendarPlus/Load', {
+    headers: authentication(f.accounts.detailsRestricted),
+    data: calendarLoad({ selection: {
+      userIdList: [f.accounts.detailsRestricted.id, f.people.amelia.id], teamIdList: [],
+    } }),
+  });
+  expect(response.ok()).toBeTruthy();
+  const { events } = await response.json();
+  const own = events.find((event) => event.id === f.detailFixtureId);
+  expect(own).toBeDefined();
+  expect(events.some((event) => event.id === f.events.meeting.id)).toBe(false);
+  expect(own.calendarPlusDetails.name).toContain('Restricted detail projection');
+  for (const field of ['location', 'usersNames', 'usersColumns']) {
+    expect(own.calendarPlusDetails).not.toHaveProperty(field);
+  }
+});
+
+test("bulk detail SQL query count stays constant as the event count grows", () => {
+  const counts = JSON.parse(execFileSync(process.env.CP_TEST_PHP || 'php', [
+    new URL('../support/bulk-detail-query-count.php', import.meta.url).pathname,
+  ], { encoding: 'utf8' }));
+  expect(counts.one.records).toBe(1);
+  expect(counts.many.records).toBeGreaterThan(20);
+  expect(counts.many.selects).toBe(counts.one.selects);
+  expect(counts.many.selects).toBeLessThan(10);
+});
+
+for (const type of ['grid', 'timeline']) {
+  test(`complete ${type} load preserves Espo's native event selection`, async ({ request }) => {
+    const input = calendarLoad({ type, to: `${f.to} 23:59:00` });
+    const response = await request.post('/api/v1/CalendarPlus/Load', {
+      headers: authentication(), data: input,
+    });
+    expect(response.ok()).toBeTruthy();
+    const complete = await response.json();
+    const params = {
+      from: type === 'timeline' ? input.from.slice(0, 16) : input.from,
+      to: type === 'timeline' ? input.to.slice(0, 16) : input.to,
+      scopeList: input.scopeList.join(','), userIdList: f.people.amelia.id,
+    };
+    const native = await request.get(`/api/v1/${type === 'timeline' ? 'Timeline' : 'Activities'}`, {
+      headers: authentication(), params,
+    });
+    expect(native.ok()).toBeTruthy();
+    const body = await native.json();
+    const expected = type === 'timeline'
+      ? Object.entries(body).flatMap(([userId, events]) => events.map((event) => ({ ...event, userId })))
+      : body;
+    const normalize = (events) => events.map(({ calendarPlusDetails, ...event }) => event)
+      .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+    expect(normalize(complete.events)).toEqual(normalize(expected));
+  });
+}
+
+test('a personal calendar load preserves native events without requiring shared-calendar permission', async ({ request }) => {
+  const input = calendarLoad({ selection: null });
+  delete input.selection;
+  const headers = authentication(f.accounts.personalOnly);
+  const response = await request.post('/api/v1/CalendarPlus/Load', { headers, data: input });
+  expect(response.ok()).toBeTruthy();
+  const complete = await response.json();
+  const native = await request.get('/api/v1/Activities', { headers, params: {
+    from: input.from, to: input.to, scopeList: input.scopeList.join(','), agenda: 'true',
+  } });
+  expect(native.ok()).toBeTruthy();
+  expect(complete.events.map(({ calendarPlusDetails, ...event }) => event)).toEqual(await native.json());
 });

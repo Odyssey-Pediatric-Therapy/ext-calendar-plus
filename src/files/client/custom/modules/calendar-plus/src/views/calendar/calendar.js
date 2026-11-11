@@ -84,12 +84,15 @@ define('calendar-plus:views/calendar/calendar', [
       if (
         !this.searchResult?.calendarUserIds?.length ||
         events.some((event) => Definitions.isSearchResult(this, event))
-      )
+      ) {
         return events;
+      }
 
       const [event] = this.convertToFcEvents([this.searchResult]);
 
-      if (!event) return events;
+      if (!event) {
+        return events;
+      }
 
       const ids = this.searchResult.calendarUserIds;
 
@@ -108,7 +111,9 @@ define('calendar-plus:views/calendar/calendar', [
     }
 
     clearSearchReveal() {
-      if (!this.searchResult) return;
+      if (!this.searchResult) {
+        return;
+      }
 
       this.searchResult = null;
 
@@ -153,9 +158,13 @@ define('calendar-plus:views/calendar/calendar', [
     }
 
     selectMode(mode) {
-      if (mode === 'timeline') this.getStorage().set('calendar', 'timelineType', 'shared');
+      if (mode === 'timeline') {
+        this.getStorage().set('calendar', 'timelineType', 'shared');
+      }
 
-      if (mode === 'timeline-personal') return this.trigger('change:mode', mode, true);
+      if (mode === 'timeline-personal') {
+        return this.trigger('change:mode', mode, true);
+      }
 
       const previousMode = this.mode;
       const revision = this.requestRevision;
@@ -182,7 +191,8 @@ define('calendar-plus:views/calendar/calendar', [
         this.allDayScopeList = this.allDayScopeList.filter((scope) => scope !== 'Task');
       }
 
-      this.extendedProps = [...this.extendedProps, 'calendarUserIds', 'visibleCalendarUserIds'];
+      this.eventAttributes = [...this.eventAttributes, 'calendarPlusDetails'];
+      this.extendedProps = [...this.extendedProps, 'calendarUserIds', 'visibleCalendarUserIds', 'calendarPlusDetails'];
 
       const hidden =
         Definitions.viewSettings(this.getPreferences(), this.mode).rememberHiddenPeople === false
@@ -198,8 +208,10 @@ define('calendar-plus:views/calendar/calendar', [
       this.dayCalendars = [];
       this.sharedUsers = [];
       this.sharedEvents = [];
+      this.sharedEventsById = new Map();
       this.requestRevision = 0;
       this.pendingPersonDrops = new Set();
+      this.highlightedUserId = null;
       this.on('remove', () => {
         this.sharedRemoved = true;
         this.resetCalendarRendering();
@@ -232,15 +244,17 @@ define('calendar-plus:views/calendar/calendar', [
       this.slotDuration = this.baseSlotDuration ?? this.slotDuration;
       this.scrollHour = this.baseScrollHour ?? this.scrollHour;
 
-      if ([5, 10, 15, 30].includes(settings.slotDuration))
+      if ([5, 10, 15, 30].includes(settings.slotDuration)) {
         this.slotDuration = settings.slotDuration;
+      }
 
       if (
         Number.isInteger(settings.scrollHour) &&
         settings.scrollHour >= 0 &&
         settings.scrollHour <= 23
-      )
+      ) {
         this.scrollHour = settings.scrollHour;
+      }
     }
 
     applyViewSettings(scroll = false) {
@@ -248,7 +262,9 @@ define('calendar-plus:views/calendar/calendar', [
 
       Definitions.applyAppearance(this);
 
-      if (!this.calendar) return;
+      if (!this.calendar) {
+        return;
+      }
 
       const signature = JSON.stringify([
         this.mode,
@@ -261,8 +277,9 @@ define('calendar-plus:views/calendar/calendar', [
         !scroll &&
         this.viewSettingsCalendar === this.calendar &&
         this.viewSettingsSignature === signature
-      )
+      ) {
         return;
+      }
 
       this.viewSettingsCalendar = this.calendar;
       this.viewSettingsSignature = signature;
@@ -291,7 +308,9 @@ define('calendar-plus:views/calendar/calendar', [
         this.syncSharedLayout();
         this.calendar.scrollToTime(this.visibleScrollTime());
 
-        if (this.dayColumnsElement) this.syncColumnScroll();
+        if (this.dayColumnsElement) {
+          this.syncColumnScroll();
+        }
       }
 
       this.refreshEventGradients();
@@ -325,8 +344,9 @@ define('calendar-plus:views/calendar/calendar', [
         Definitions.viewSettings(this.getPreferences(), this.mode).scrollHour != null ||
         this.options.scrollHour != null ||
         this.getPreferences().get('calendarScrollHour') != null
-      )
+      ) {
         return;
+      }
 
       return super.handleScrollToNow();
     }
@@ -349,10 +369,14 @@ define('calendar-plus:views/calendar/calendar', [
       this.eventAppearances.clear();
       this.hoveredUserId = null;
       this.focusedUserId = null;
+      this.highlightedUserId = null;
       this.sharedUsers = [];
       this.sharedEvents = [];
+      this.sharedEventsById = new Map();
       this.calendar?.destroy();
       this.calendar = null;
+      this.layoutCalendar = null;
+      this.viewSettingsCalendar = null;
     }
 
     setupMode() {
@@ -396,11 +420,15 @@ define('calendar-plus:views/calendar/calendar', [
         (this.getEventTypeCompletedStatusList?.(event.scope) || []).includes(event.status) ||
         (this.getEventTypeCanceledStatusList?.(event.scope) || []).includes(event.status);
 
-      if (!color || !ended) return color;
+      if (!color || !ended) {
+        return color;
+      }
 
       // Match Espo's status shading; generated person colors can also use HSL.
 
-      if (/^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(color)) return this.shadeColor(color, 0.4);
+      if (/^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(color)) {
+        return this.shadeColor(color, 0.4);
+      }
 
       const shade = this.getThemeManager().getParam('isDark') ? '#000' : '#fff';
 
@@ -408,8 +436,9 @@ define('calendar-plus:views/calendar/calendar', [
     }
 
     colorForEvent(event, userId) {
-      if (event.display === 'background' || event.display === 'inverse-background')
+      if (event.display === 'background' || event.display === 'inverse-background') {
         return event.color;
+      }
 
       const color =
         this.usePersonGradient() && userId
@@ -448,88 +477,91 @@ define('calendar-plus:views/calendar/calendar', [
     }
 
     async fetchEvents(from, to, callback) {
-      this.eventTooltip.refresh();
-      this.syncSharedLayout();
-
-      if (!this.isSharedTimeGrid()) {
-        const revision = ++this.requestRevision;
-
-        return super.fetchEvents(from, to, async (events) => {
-          events = this.includeSearchResult(events);
-
-          if (Definitions.shouldFilterEvents(this, events)) {
-            events = await Definitions.filterEvents(this, events);
-          }
-
-          if (!this.sharedRemoved && revision === this.requestRevision) callback(events);
-        });
-      }
-
       const revision = ++this.requestRevision;
-
       const current = () => !this.sharedRemoved && revision === this.requestRevision;
+      const shared = this.isSharedTimeGrid();
+      const item = Definitions.find(this.getPreferences(), this.mode);
+      const request = {
+        type: 'grid',
+        from,
+        to,
+        scopeList: this.enabledScopeList,
+        agenda: this.isAgendaMode(),
+        workingTime: shared && this.viewMode === 'agendaDay',
+      };
 
-      Espo.Ui.notifyWait();
-
-      try {
-        const item = Definitions.find(this.getPreferences(), this.mode);
-        const includeInactive = Definitions.showInactiveUsers(this.getPreferences(), this.mode);
-        const selected = {
+      if (shared) {
+        request.agenda = this.viewMode !== 'month';
+        request.selection = Definitions.membershipSelection({
           teamIdList: this.teamIdList || [],
           userIdList: this.selectedUserIds || [],
           ...item,
-        };
-        const selection = Definitions.membershipSelection(selected, includeInactive);
-        const { users } = await Espo.Ajax.postRequest('CalendarPlus/Users', selection);
+        }, Definitions.showInactiveUsers(this.getPreferences(), this.mode));
+      } else if (this.options.userId) {
+        request.userId = this.options.userId;
+      }
 
-        if (!current()) return;
+      this.eventTooltip.refresh();
+      this.fetching = true;
+      if (!this.suppressLoadingAlert) {
+        Espo.Ui.notifyWait();
+      }
+      this.suppressLoadingAlert = false;
 
-        const query = {
-          from,
-          to,
-          agenda: this.viewMode !== 'month',
-          userIdList: users.map((user) => user.id).join(','),
-          scopeList: this.enabledScopeList.join(','),
-        };
-        const [data, working] = await Promise.all([
-          users.length ? Espo.Ajax.getRequest('Activities', query) : [],
-          users.length && this.viewMode === 'agendaDay'
-            ? Espo.Ajax.postRequest('CalendarPlus/WorkingTimeRanges', {
-                from,
-                to,
-                userIdList: users.map((user) => user.id),
-              })
-            : { ranges: [] },
-        ]);
+      try {
+        const data = await Espo.Ajax.postRequest('CalendarPlus/Load', request);
 
-        if (!current()) return;
+        if (!current()) {
+          return;
+        }
 
-        const events = [
-          ...this.convertSharedEvents(data, users),
-          ...this.convertWorkingTimeRanges(working.ranges, users),
-        ];
-        const filtered = await Definitions.filterEvents(this, this.includeSearchResult(events));
+        let events;
 
-        if (!current()) return;
+        if (shared) {
+          this.sharedUsers = data.users;
+          this.assignUserColors(data.users);
+          events = [
+            ...this.convertSharedEvents(data.events, data.users),
+            ...this.convertWorkingTimeRanges(data.ranges, data.users),
+          ];
+        } else {
+          events = this.convertToFcEvents(data.events);
+        }
 
-        // Publish users and events together only after all asynchronous work is current.
-        this.sharedUsers = users;
-        this.assignUserColors(users);
-        this.sharedEvents = filtered.map((event) => ({
-          ...event,
-          color: this.colorForEvent(event, event.calendarUserIds[0]),
-        }));
-        callback(this.sharedEvents.map((event) => this.filteredEvent(event)));
+        events = Definitions.filterEvents(this, this.includeSearchResult(events));
+
+        if (!current()) {
+          return;
+        }
+
+        if (shared) {
+          this.sharedEvents = events;
+          this.sharedEventsById = new Map(events.map((event) => [event.id, event]));
+        }
+
+        if (shared) {
+          callback(events.map((event) => this.filteredEvent(event)));
+        } else {
+          callback(events);
+        }
+
         this.syncSharedLayout();
         Espo.Ui.notify();
       } catch (error) {
-        if (!current()) return;
+        if (!current()) {
+          return;
+        }
 
         this.sharedUsers = [];
         this.sharedEvents = [];
+        this.sharedEventsById = new Map();
         callback([]);
         this.syncSharedLayout();
         Espo.Ui.error(this.translate('Could not load shared calendar', 'messages', 'Calendar'));
+      } finally {
+        if (current()) {
+          this.fetching = false;
+        }
       }
     }
 
@@ -594,15 +626,35 @@ define('calendar-plus:views/calendar/calendar', [
     }
 
     syncSharedLayout() {
-      if (!this.calendar || this.sharedRemoved) return;
+      if (!this.calendar || this.sharedRemoved) {
+        return;
+      }
 
-      this.calendar.setOption('eventContent', (info) => this.sharedEventContent(info));
-      this.calendar.setOption('eventDidMount', (info) => this.registerEventElement(info));
-      this.calendar.setOption('eventWillUnmount', (info) => this.unregisterEventElement(info));
-      this.calendar.setOption('eventResizeStart', () => this.eventTooltip.hide());
-      this.calendar.setOption('eventDragStart', () => this.eventTooltip.hide());
+      const shared = this.isSharedTimeGrid();
+      const mode = `${shared}:${this.viewMode}`;
 
-      if (!this.isSharedTimeGrid()) {
+      // New callback identities invalidate FullCalendar's rendered event content.
+      // Install them together only when the calendar or interaction mode changes.
+      if (this.layoutCalendar !== this.calendar || this.layoutMode !== mode) {
+        this.layoutCalendar = this.calendar;
+        this.layoutMode = mode;
+        this.calendar.batchRendering(() => {
+          this.calendar.setOption('eventContent', (info) => this.sharedEventContent(info));
+          this.calendar.setOption('eventDidMount', (info) => this.registerEventElement(info));
+          this.calendar.setOption('eventWillUnmount', (info) => this.unregisterEventElement(info));
+          this.calendar.setOption('eventResizeStart', () => this.eventTooltip.hide());
+          this.calendar.setOption('slotEventOverlap', !shared);
+          if (shared && this.viewMode === 'agendaWeek') {
+            this.calendar.setOption('eventDragStart', (info) => this.startPersonDropDrag(info, this.calendar));
+            this.calendar.setOption('eventDragStop', (info) => this.stopPersonDropDrag(info));
+          } else {
+            this.calendar.setOption('eventDragStart', () => this.eventTooltip.hide());
+            this.calendar.setOption('eventDragStop', null);
+          }
+        });
+      }
+
+      if (!shared) {
         this.clearDayColumns();
         this.clearLegend();
         this.$calendar.show();
@@ -610,17 +662,6 @@ define('calendar-plus:views/calendar/calendar', [
         return;
       }
 
-      this.calendar.setOption('slotEventOverlap', false);
-      this.calendar.setOption(
-        'eventDragStart',
-        this.viewMode === 'agendaWeek'
-          ? (info) => this.startPersonDropDrag(info, this.calendar)
-          : () => this.eventTooltip.hide(),
-      );
-      this.calendar.setOption(
-        'eventDragStop',
-        this.viewMode === 'agendaWeek' ? (info) => this.stopPersonDropDrag(info) : null,
-      );
       this.renderLegend();
 
       if (this.viewMode === 'agendaDay') {
@@ -636,8 +677,11 @@ define('calendar-plus:views/calendar/calendar', [
     }
 
     sharedEventContent(info) {
-      if (['background', 'inverse-background'].includes(info.event.display))
-        return { domNodes: [] };
+      if (['background', 'inverse-background'].includes(info.event.display)) {
+        return {
+          domNodes: []
+        };
+      }
 
       const frame = document.createElement('div');
 
@@ -691,16 +735,24 @@ define('calendar-plus:views/calendar/calendar', [
     }
 
     setPersonVisible(id, visible) {
-      if (visible) this.hiddenUserIds.delete(id);
-      else this.hiddenUserIds.add(id);
+      if (visible) {
+        this.hiddenUserIds.delete(id);
+      }
+      else {
+        this.hiddenUserIds.add(id);
+      }
 
       this.applyPersonFilters();
     }
 
     setAllPeopleVisible(visible) {
       for (const user of this.sharedUsers) {
-        if (visible) this.hiddenUserIds.delete(user.id);
-        else this.hiddenUserIds.add(user.id);
+        if (visible) {
+          this.hiddenUserIds.delete(user.id);
+        }
+        else {
+          this.hiddenUserIds.add(user.id);
+        }
       }
 
       this.applyPersonFilters();
@@ -721,9 +773,11 @@ define('calendar-plus:views/calendar/calendar', [
       // Keep the original event source so Refresh and date navigation still fetch normally.
       this.calendar.batchRendering(() => {
         for (const event of this.calendar.getEvents()) {
-          const source = this.sharedEvents.find((item) => item.id === event.id);
+          const source = this.sharedEventsById.get(event.id);
 
-          if (!source) continue;
+          if (!source) {
+            continue;
+          }
 
           const filtered = this.filteredEvent(source);
 
@@ -736,7 +790,9 @@ define('calendar-plus:views/calendar/calendar', [
       this.refreshEventGradients();
       this.refreshLegendState();
 
-      if (this.viewMode === 'agendaDay') this.renderDayColumns();
+      if (this.viewMode === 'agendaDay') {
+        this.renderDayColumns();
+      }
 
       this.updatePersonHighlight();
     }
@@ -747,6 +803,16 @@ define('calendar-plus:views/calendar/calendar', [
         userId ? [userId] : info.event.extendedProps.calendarUserIds || [],
       );
       this.eventAppearances.set(info.el, { event: info.event, userId });
+
+      const candidate = this.hoveredUserId || this.focusedUserId;
+      const highlighted = candidate && !this.hiddenUserIds.has(candidate) ? candidate : null;
+
+      if (highlighted) {
+        const ids = this.eventElements.get(info.el);
+
+        info.el.classList.toggle('cp-person-event-dimmed', !ids.includes(highlighted));
+        info.el.classList.toggle('cp-person-event-highlighted', ids.includes(highlighted));
+      }
 
       if (info.event.extendedProps.scope && info.event.display !== 'inverse-background') {
         this.eventTooltip.attach(info.el);
@@ -770,10 +836,12 @@ define('calendar-plus:views/calendar/calendar', [
     }
 
     paintEventGradient(element, event, userId) {
-      if (['background', 'inverse-background'].includes(event.display)) return;
+      if (['background', 'inverse-background'].includes(event.display)) {
+        return;
+      }
 
       // Mounted EventApi objects can outlive a refetch; use the current membership data.
-      const source = this.sharedEvents.find((item) => item.id === event.id);
+      const source = this.sharedEventsById.get(event.id);
       const ids = (source?.calendarUserIds || event.extendedProps.calendarUserIds || []).filter(
         (id) => !this.hiddenUserIds.has(id),
       );
@@ -799,6 +867,12 @@ define('calendar-plus:views/calendar/calendar', [
     updatePersonHighlight() {
       const candidate = this.hoveredUserId || this.focusedUserId;
       const id = candidate && !this.hiddenUserIds.has(candidate) ? candidate : null;
+
+      if (id === this.highlightedUserId) {
+        return;
+      }
+
+      this.highlightedUserId = id;
 
       for (const [element, ids] of this.eventElements) {
         element.classList.toggle('cp-person-event-dimmed', !!id && !ids.includes(id));
@@ -837,6 +911,17 @@ define('calendar-plus:views/calendar/calendar', [
     }
 
     renderLegend() {
+      const signature = JSON.stringify(
+        this.sharedUsers.map((user) => [user.id, user.name, this.colorForUser(user.id)]),
+      );
+
+      if (this.legendElement && this.legendSignature === signature) {
+        this.refreshLegendState();
+
+        return;
+      }
+
+      this.legendSignature = signature;
       if (!this.legendElement) {
         this.legendElement = document.createElement('div');
         this.legendElement.setAttribute(
@@ -932,7 +1017,9 @@ define('calendar-plus:views/calendar/calendar', [
       button.addEventListener('click', (event) => {
         event?.stopPropagation();
 
-        if (!this.personDropDrag) this.setPersonVisible(user.id, this.hiddenUserIds.has(user.id));
+        if (!this.personDropDrag) {
+          this.setPersonVisible(user.id, this.hiddenUserIds.has(user.id));
+        }
       });
       button.addEventListener('mouseenter', () => {
         this.hoveredUserId = user.id;
@@ -982,7 +1069,9 @@ define('calendar-plus:views/calendar/calendar', [
     updateLegendLayout() {
       const legend = this.legendElement;
 
-      if (!legend?.clientWidth || !this.legendItems) return;
+      if (!legend?.clientWidth || !this.legendItems) {
+        return;
+      }
 
       // Measure the single-row buttons even while the live menu is collapsed.
       const measure = this.legendItems.cloneNode(true);
@@ -1005,6 +1094,7 @@ define('calendar-plus:views/calendar/calendar', [
       this.legendElement?.remove();
       this.legendElement = null;
       this.legendItems = null;
+      this.legendButtons = new Map();
     }
 
     clearDayColumns() {
@@ -1059,10 +1149,22 @@ define('calendar-plus:views/calendar/calendar', [
 
         reposition = true;
 
-        if (scrollLeft !== undefined) this.dayColumnsElement.scrollLeft = scrollLeft;
+        if (scrollLeft !== undefined) {
+          this.dayColumnsElement.scrollLeft = scrollLeft;
+        }
       }
 
-      for (const { calendar, userId } of this.dayCalendars) {
+      for (const column of this.dayCalendars) {
+        const { calendar, userId } = column;
+
+        // A layout sync often follows a date update or the start of a fetch.
+        // Keep mounted events until the date or fetched event array changes.
+        if (column.events === this.sharedEvents && column.date === date) {
+          continue;
+        }
+
+        column.events = this.sharedEvents;
+        column.date = date;
         calendar.batchRendering(() => {
           calendar.gotoDate(this.calendar.getDate());
           calendar.removeAllEventSources();
@@ -1152,7 +1254,9 @@ define('calendar-plus:views/calendar/calendar', [
         eventDragStop: (info) => this.stopPersonDropDrag(info),
 
         eventLeave: (info) => {
-          if (this.personDropDrag) this.personDropDrag.restoreSource = info.revert;
+          if (this.personDropDrag) {
+            this.personDropDrag.restoreSource = info.revert;
+          }
         },
 
         eventReceive: (info) => this.receivePersonDrop(info, user.id),
@@ -1181,7 +1285,9 @@ define('calendar-plus:views/calendar/calendar', [
     legendUserAt(jsEvent) {
       const point = jsEvent?.changedTouches?.[0] || jsEvent?.touches?.[0] || jsEvent;
 
-      if (!point || !Number.isFinite(point.clientX) || !Number.isFinite(point.clientY)) return null;
+      if (!point || !Number.isFinite(point.clientX) || !Number.isFinite(point.clientY)) {
+        return null;
+      }
 
       for (const [id, { button }] of this.legendButtons || []) {
         const rect = button.getBoundingClientRect();
@@ -1193,8 +1299,9 @@ define('calendar-plus:views/calendar/calendar', [
           point.clientX <= rect.right &&
           point.clientY >= rect.top &&
           point.clientY <= rect.bottom
-        )
+        ) {
           return id;
+        }
       }
 
       return null;
@@ -1205,7 +1312,9 @@ define('calendar-plus:views/calendar/calendar', [
         const field = this.getMetadata().get(['entityDefs', scope, 'fields', name]);
         const link = this.getMetadata().get(['entityDefs', scope, 'links', name]);
 
-        if (field?.type === 'linkMultiple' && link?.entity === 'User') return name;
+        if (field?.type === 'linkMultiple' && link?.entity === 'User') {
+          return name;
+        }
       }
 
       return 'assignedUser';
@@ -1254,7 +1363,9 @@ define('calendar-plus:views/calendar/calendar', [
       // FullCalendar emits eventLeave/eventReceive immediately after eventDragStop.
 
       queueMicrotask(() => {
-        if (this.personDropDrag === drag) this.finishPersonDropDrag();
+        if (this.personDropDrag === drag) {
+          this.finishPersonDropDrag();
+        }
       });
     }
 
@@ -1280,16 +1391,24 @@ define('calendar-plus:views/calendar/calendar', [
       const receivingCalendar = this.dayCalendars.find((item) => item.userId === userId)?.calendar;
 
       const revert = () => {
-        if (this.sharedRemoved) return;
+        if (this.sharedRemoved) {
+          return;
+        }
 
         const targetActive = this.dayCalendars.some((item) => item.calendar === receivingCalendar);
         const sourceActive = this.dayCalendars.some((item) => item.calendar === drag?.calendar);
 
-        if (targetActive) info.revert();
+        if (targetActive) {
+          info.revert();
+        }
 
-        if (sourceActive) drag?.restoreSource?.();
+        if (sourceActive) {
+          drag?.restoreSource?.();
+        }
 
-        if (!targetActive || (drag && !sourceActive)) this.actionRefresh();
+        if (!targetActive || (drag && !sourceActive)) {
+          this.actionRefresh();
+        }
       };
 
       // Only accept events dragged from a column in this shared calendar.
@@ -1319,7 +1438,9 @@ define('calendar-plus:views/calendar/calendar', [
       const delta = event.start.getTime() - originalEvent.start.getTime();
 
       for (const name of ['dateStart', 'dateEnd']) {
-        if (!props[name]) continue;
+        if (!props[name]) {
+          continue;
+        }
 
         const value = this.getDateTime()
           .toMoment(props[name])
@@ -1329,12 +1450,16 @@ define('calendar-plus:views/calendar/calendar', [
         attributes[name] = this.convertDateTime(value);
       }
 
-      if (props.dateStartDate) attributes.dateStartDate = event.startStr.slice(0, 10);
+      if (props.dateStartDate) {
+        attributes.dateStartDate = event.startStr.slice(0, 10);
+      }
 
       if (props.dateEndDate) {
         const end = new Date((event.endStr || event.startStr).slice(0, 10) + 'T00:00:00Z');
 
-        if (event.endStr) end.setUTCDate(end.getUTCDate() - 1);
+        if (event.endStr) {
+          end.setUTCDate(end.getUTCDate() - 1);
+        }
 
         attributes.dateEndDate = end.toISOString().slice(0, 10);
       }
@@ -1369,7 +1494,9 @@ define('calendar-plus:views/calendar/calendar', [
         model.id = recordId;
         await model.fetch();
 
-        if (!this.getAcl().checkModel(model, 'edit')) throw new Error('Event is not editable.');
+        if (!this.getAcl().checkModel(model, 'edit')) {
+          throw new Error('Event is not editable.');
+        }
 
         const dates = moveTime ? this.movedEventDates(event, originalEvent) : {};
 
@@ -1401,8 +1528,9 @@ define('calendar-plus:views/calendar/calendar', [
       } catch (error) {
         revert();
 
-        if (!this.sharedRemoved)
+        if (!this.sharedRemoved) {
           Espo.Ui.error(this.translate('Could not update event', 'messages', 'Calendar'));
+        }
 
         return false;
       } finally {
@@ -1446,13 +1574,15 @@ define('calendar-plus:views/calendar/calendar', [
         const attribute = `${fieldName}Ids`;
         const participantIds = model.get(attribute);
 
-        if (!Array.isArray(participantIds))
+        if (!Array.isArray(participantIds)) {
           throw new Error('The current participant list is unavailable.');
+        }
 
         // Append only: preserve all existing participants, response statuses, and ownership.
 
-        if (!participantIds.includes(userId))
+        if (!participantIds.includes(userId)) {
           attributes[attribute] = [...new Set([...participantIds, userId])];
+        }
       } else if (model.get('assignedUserId') !== userId) {
         attributes.assignedUserId = userId;
       }
@@ -1492,25 +1622,19 @@ define('calendar-plus:views/calendar/calendar', [
     addModel(model) {
       this.eventTooltip.refresh();
 
-      if (this.isSharedTimeGrid()) return this.actionRefresh();
-
-      return super.addModel(model);
+      return this.actionRefresh();
     }
 
     updateModel(model) {
       this.eventTooltip.refresh();
 
-      if (this.isSharedTimeGrid()) return this.actionRefresh();
-
-      return super.updateModel(model);
+      return this.actionRefresh();
     }
 
     removeModel(model) {
       this.eventTooltip.refresh();
 
-      if (this.isSharedTimeGrid()) return this.actionRefresh();
-
-      return super.removeModel(model);
+      return this.actionRefresh();
     }
   };
 });
