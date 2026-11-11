@@ -8,6 +8,7 @@ use Espo\Core\Exceptions\Forbidden;
 use Espo\Core\Record\ServiceContainer;
 use Espo\Core\Select\SelectBuilderFactory;
 use Espo\Core\Utils\Metadata;
+use Espo\Core\Utils\FieldUtil;
 use Espo\ORM\EntityManager;
 use Espo\ORM\Query\Part\Selection as Column;
 use stdClass;
@@ -17,8 +18,7 @@ class EventDetails
 {
   // Keep dates from Espo's calendar result. A custom calendar query can map
   // different record fields to dateStart/dateEnd, so raw dates must not override it.
-  private const ATTRIBUTES = ['name', 'status', 'assignedUserName', 'location'];
-  private const LINKS = ['assignedUsers', 'collaborators', 'users', 'contacts', 'leads'];
+  private const ATTENDEES = ['users', 'contacts', 'leads'];
   public const MAX_RECORDS = 500;
 
   public function __construct(
@@ -27,6 +27,8 @@ class EventDetails
     private Acl $acl,
     private Metadata $metadata,
     private ServiceContainer $services,
+    private TooltipLayout $layouts,
+    private FieldUtil $fieldUtil,
   ) {}
 
   /** @return array<string, stdClass> */
@@ -78,10 +80,42 @@ class EventDetails
   private function fetchScope(string $scope, array $ids): array {
     $seed = $this->entityManager->getNewEntity($scope);
     $forbidden = $this->acl->getScopeForbiddenAttributeList($scope);
-    $attributes = array_values(array_filter(
-      self::ATTRIBUTES,
+    $fields = [];
+    $attributes = ['name'];
+    $links = [];
+
+    foreach ($this->layouts->fields($scope) as $field) {
+      if ($field === ':attendees') {
+        $fields[] = $field;
+        $links = [...$links, ...self::ATTENDEES];
+
+        continue;
+      }
+
+      if (!$this->acl->checkField($scope, $field)) {
+        continue;
+      }
+
+      $fields[] = $field;
+      $type = $this->metadata->get(['entityDefs', $scope, 'fields', $field, 'type']);
+
+      if ($type === 'linkMultiple') {
+        $links[] = $field;
+      } elseif (!in_array($field, ['dateStart', 'dateEnd', 'dateStartDate', 'dateEndDate'], true)) {
+        $attributes = [...$attributes, ...$this->fieldUtil->getAttributeList($scope, $field)];
+      }
+    }
+
+    $attributes = array_values(array_unique(array_filter(
+      $attributes,
       fn ($attribute) => $seed->hasAttribute($attribute) && !in_array($attribute, $forbidden, true),
-    ));
+    )));
+    $displayLinks = array_values(array_unique($links));
+
+    // Attendance filtering still needs user responses even when hidden in the layout.
+    $links = array_values(array_unique([...$links, 'users']));
+    $outputAttributes = $attributes;
+
     $query = $this->selectBuilderFactory
       ->create()
       ->from($scope)
@@ -102,7 +136,7 @@ class EventDetails
 
     $defs = $this->entityManager->getDefs()->getEntity($scope);
 
-    foreach (self::LINKS as $link) {
+    foreach ($links as $link) {
       if (
         !$defs->hasRelation($link) ||
         !$seed->hasAttribute($link . 'Names') ||
@@ -111,18 +145,25 @@ class EventDetails
       ) {
         continue;
       }
+      $showNames = in_array($link, $displayLinks, true);
+
+      if ($showNames) {
+        $outputAttributes[] = $link . 'Names';
+      }
+
       // Each relation gets one query for all readable records. Separate queries avoid
       // multiplying attendee rows by contacts, leads, and collaborators in a cross product.
       $relation = $defs->getRelation($link);
       $hasStatus = $relation->isManyToMany() &&
         isset(($relation->getParam('additionalColumns') ?? [])['status']) &&
         !in_array($link . 'Columns', $forbidden, true);
-      $select = [
-        'id',
-        Column::fromString($link . '.id')->withAlias('personId'),
-        Column::fromString($link . '.name')->withAlias('personName'),
-      ];
+      $select = ['id', Column::fromString($link . '.id')->withAlias('personId')];
+
+      if ($showNames) {
+        $select[] = Column::fromString($link . '.name')->withAlias('personName');
+      }
       if ($hasStatus) {
+        $outputAttributes[] = $link . 'Columns';
         $select[] = Column::fromString($link . 'Middle.status')->withAlias('attendanceStatus');
       }
       $relationQuery = $this->entityManager
@@ -135,13 +176,19 @@ class EventDetails
       $names = $columns = [];
       $rows = $this->entityManager->getQueryExecutor()->execute($relationQuery);
       while ($row = $rows->fetch(\PDO::FETCH_ASSOC)) {
-        $names[$row['id']][$row['personId']] = $row['personName'];
+        if ($showNames) {
+          $names[$row['id']][$row['personId']] = $row['personName'];
+        }
+
         if ($hasStatus) {
           $columns[$row['id']][$row['personId']] = (object) ['status' => $row['attendanceStatus']];
         }
       }
       foreach ($entities as $id => $entity) {
-        $entity->set($link . 'Names', (object) ($names[$id] ?? []));
+        if ($showNames) {
+          $entity->set($link . 'Names', (object) ($names[$id] ?? []));
+        }
+
         if ($hasStatus) {
           $entity->set($link . 'Columns', (object) ($columns[$id] ?? []));
         }
@@ -156,13 +203,7 @@ class EventDetails
       // read/list field loaders, which perform individual relation queries.
       $service->prepareEntityForOutput($entity);
       $data = new stdClass();
-      $outputAttributes = [
-        ...$attributes,
-        ...array_map(fn ($link) => $link . 'Names', self::LINKS),
-        'usersColumns',
-        'contactsColumns',
-        'leadsColumns',
-      ];
+      $data->calendarPlusTooltipFields = $fields;
 
       foreach ($outputAttributes as $attribute) {
         if ($entity->has($attribute)) {

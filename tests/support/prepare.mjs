@@ -48,7 +48,16 @@ for (const [name, license] of [
 
 run(process.execPath, ["build", "--extension"]);
 await mkdir(runtime, { recursive: true });
-for (const name of ["application", "vendor", "html"]) {
+
+if (process.env.CP_TEST_DEVELOPER_MODE === "1") {
+  await cp(
+    join(root, "build/assets/transpiled/custom/modules/calendar-plus/src"),
+    join(runtime, "client/custom/modules/calendar-plus/lib/transpiled/src"),
+    { recursive: true },
+  );
+}
+
+for (const name of ["application", "vendor", "html", "frontend"]) {
   const destination = join(runtime, name);
   if (!existsSync(destination)) {
     await symlink(join(site, name), destination, "dir");

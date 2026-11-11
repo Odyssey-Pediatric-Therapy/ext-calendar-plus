@@ -339,3 +339,95 @@ test('a personal calendar load preserves native events without requiring shared-
   expect(native.ok()).toBeTruthy();
   expect(complete.events.map(({ calendarPlusDetails, ...event }) => event)).toEqual(await native.json());
 });
+
+async function saveTooltipLayout(request, scope, fields) {
+  const response = await request.put(`/api/v1/${scope}/layout/calendarPlusTooltip`, {
+    headers: authentication(), data: fields.map((name) => ({ name })),
+  });
+
+  expect(response.ok()).toBeTruthy();
+}
+
+async function resetTooltipLayout(request, scope) {
+  const response = await request.post('/api/v1/Layout/action/resetToDefault', {
+    headers: authentication(), data: { scope, name: 'calendarPlusTooltip' },
+  });
+
+  expect(response.ok()).toBeTruthy();
+}
+
+test('custom tooltip layouts drive projection order and preserve explicitly empty layouts', async ({ request }) => {
+  try {
+    await saveTooltipLayout(request, 'Meeting', ['status', ':attendees']);
+
+    let response = await request.post('/api/v1/CalendarPlus/Load', {
+      headers: authentication(), data: calendarLoad(),
+    });
+    let data = await response.json();
+    let details = data.events.find((event) => event.id === f.events.meeting.id).calendarPlusDetails;
+
+    expect(details.calendarPlusTooltipFields).toEqual(['status', ':attendees']);
+    expect(details.usersNames).toHaveProperty(f.people.amelia.id);
+    expect(details).not.toHaveProperty('assignedUserName');
+    expect(details).not.toHaveProperty('location');
+
+    await saveTooltipLayout(request, 'Meeting', []);
+
+    response = await request.post('/api/v1/CalendarPlus/Load', {
+      headers: authentication(), data: calendarLoad(),
+    });
+    data = await response.json();
+    details = data.events.find((event) => event.id === f.events.meeting.id).calendarPlusDetails;
+
+    expect(details.calendarPlusTooltipFields).toEqual([]);
+    expect(details).not.toHaveProperty('assignedUserName');
+    expect(details).not.toHaveProperty('usersNames');
+  } finally {
+    await resetTooltipLayout(request, 'Meeting');
+  }
+
+  const restored = await request.get('/api/v1/Meeting/layout/calendarPlusTooltip', { headers: authentication() });
+
+  expect((await restored.json()).map((field) => field.name)).toContain(':attendees');
+});
+
+test('generic tooltip defaults support custom calendar entities and additional date fields', async ({ request }) => {
+  const scope = 'CLayoutSession';
+  const defaultResponse = await request.get(`/api/v1/${scope}/layout/calendarPlusTooltip`, {
+    headers: authentication(),
+  });
+
+  expect(defaultResponse.ok()).toBeTruthy();
+  expect((await defaultResponse.json()).map((field) => field.name)).toContain('dateEnd');
+
+  try {
+    await saveTooltipLayout(request, scope, ['dateEndScheduled', 'confirmed', 'cost']);
+
+    const response = await request.post('/api/v1/CalendarPlus/Load', {
+      headers: authentication(),
+      data: calendarLoad({ selection: { userIdList: [f.accounts.admin.id] }, scopeList: [scope] }),
+    });
+
+    expect(response.ok()).toBeTruthy();
+
+    const data = await response.json();
+    const event = data.events.find((item) => item.id === f.layoutFixtureId);
+
+    expect(event.dateEnd).toBe(`${f.date} 11:00:00`);
+    expect(event.calendarPlusDetails.calendarPlusTooltipFields).toEqual(['dateEndScheduled', 'confirmed', 'cost']);
+    expect(event.calendarPlusDetails.dateEndScheduled).toBe(`${f.date} 12:30:00`);
+    expect(event.calendarPlusDetails.confirmed).toBe(false);
+    expect(event.calendarPlusDetails.cost).toBe(0);
+    expect(event.calendarPlusDetails.costCurrency).toBe('USD');
+  } finally {
+    await resetTooltipLayout(request, scope);
+  }
+});
+
+test('non-admin users cannot customize tooltip layouts', async ({ request }) => {
+  const response = await request.put('/api/v1/Meeting/layout/calendarPlusTooltip', {
+    headers: authentication(f.accounts.teamOnly), data: [],
+  });
+
+  expect(response.status()).toBe(403);
+});

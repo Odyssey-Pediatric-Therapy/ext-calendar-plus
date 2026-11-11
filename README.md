@@ -8,6 +8,12 @@ There is no dependency on Odyssey. Existing saved calendars and timelines remain
 
 Admin → **Extension Settings → Calendar Plus** provides switches for hover tooltips and Month/Week color gradients, both enabled by default. Day and Timeline always use solid entity colors. Existing module identifiers and saved calendar preferences remain compatible.
 
+Admins can choose and reorder tooltip fields at **Administration → Layout Manager → [Entity] → Calendar Tooltip**. Layouts remain editable when tooltips are disabled. **Attendees** combines users, contacts, and leads with their response indicators; Tasks use **Collaborators**. Empty values and attendee lists are omitted. Existing per-calendar visibility switches still apply.
+
+A saved layout overrides the extension's entity-specific default. Custom calendar entities without a provided layout use supported generic defaults. An explicitly empty saved layout has no detail rows; the event heading remains. **Reset to Default** removes the saved override.
+
+Developers can provide an ordered array of field entries (`{"name": "dateEndScheduled"}`) in an entity's `Resources/layouts/<Entity>/calendarPlusTooltip.json`. The special field name `:attendees` selects the composite Attendees option without conflicting with real entity fields. Use the standard `app.layouts.<Entity>.calendarPlusTooltip.module` metadata to locate defaults in a different module. Supported stored scalar, date, enum, boolean, currency, link, and link-multiple fields are offered in the editor. Fields requiring individual record loaders are excluded. Field and record permissions are enforced, and selected data arrives in the existing single calendar-load response. Adding a scheduled date to a tooltip does not change event placement or drag/resize behavior.
+
 ## Documentation
 
 - [Features](docs/Features.md) — Calendar Plus capabilities and settings.
