@@ -127,3 +127,95 @@ test("each calendar load uses one complete response without follow-up data reque
     expect(restored.ok()).toBeTruthy();
   }
 });
+
+test('grid and timeline tooltips show actual attendees outside the selected calendar', async ({ page, request }, testInfo) => {
+  test.skip(testInfo.project.name !== 'chromium', 'Hover tooltips require a mouse.');
+
+  const endpoint = `/api/v1/Meeting/${f.events.meeting.id}`;
+  const headers = authentication();
+  const originalResponse = await request.get(endpoint, { headers });
+  const original = await originalResponse.json();
+  const attendee = f.people.harper;
+  const changed = await request.put(endpoint, {
+    headers,
+    data: {
+      usersIds: [...new Set([...original.usersIds, attendee.id, f.accounts.admin.id])],
+      usersColumns: {
+        ...original.usersColumns,
+        [attendee.id]: { status: 'Accepted' },
+        [f.accounts.admin.id]: { status: 'Accepted' },
+      },
+    },
+  });
+
+  expect(changed.ok()).toBeTruthy();
+
+  const recordReads = [];
+
+  page.on('request', (request) => {
+    if (request.method() === 'GET' && /\/api\/v1\/Meeting\/[^/?]+/.test(request.url())) {
+      recordReads.push(request.url());
+    }
+  });
+
+  try {
+    for (const mode of ['week', 'day', 'timeline', 'agendaWeek']) {
+      let route = `view-cp-test-${mode}`;
+
+      if (mode === 'agendaWeek') {
+        route = mode;
+      }
+
+      await page.goto(calendarUrl(route));
+
+      const event = page.locator('.fc-event:visible, .vis-item:visible')
+        .filter({ hasText: f.events.meeting.name }).first();
+
+      await expect(event).toBeVisible();
+      await page.waitForLoadState('networkidle');
+      await event.hover();
+
+      const tooltip = page.locator('.cp-calendar-event-tooltip');
+      const attendees = tooltip.locator('.cp-calendar-event-attendees');
+
+      await expect(tooltip).toBeVisible();
+      await expect(attendees).toContainText(attendee.name);
+      await expect(attendees.locator('.cp-calendar-attendance-accepted')).toHaveCount(3);
+      await expect(tooltip).not.toContainText('Calendar users');
+
+      if (mode === 'agendaWeek') {
+        expect(recordReads).toEqual([]);
+
+        await event.click();
+        await page.locator('.modal-dialog [data-name="edit"]').click();
+        await page.locator('.modal-dialog input[data-name="name"]').fill(`${original.name} save check`);
+        await page.waitForLoadState('networkidle');
+
+        recordReads.length = 0;
+
+        const refreshed = page.waitForResponse((response) => response.url().endsWith('/CalendarPlus/Load'));
+
+        await page.locator('.modal-dialog [data-name="save"]').click();
+        await refreshed;
+        await expect(page.locator('.modal-dialog')).toBeHidden();
+        await page.waitForLoadState('networkidle');
+        await event.hover();
+        await expect(attendees).toContainText(attendee.name);
+        await expect(attendees.locator('.cp-calendar-attendance-accepted')).toHaveCount(3);
+      }
+    }
+
+    expect(recordReads).toEqual([]);
+  } finally {
+    const restored = await request.put(endpoint, {
+      headers,
+      data: {
+        name: original.name,
+        usersIds: original.usersIds,
+        usersColumns: original.usersColumns,
+      },
+    });
+
+    expect(restored.ok()).toBeTruthy();
+  }
+});

@@ -105,6 +105,8 @@ class FakeCalendar {
   unselect() {}
 }
 class BaseCalendar {
+  eventAttributes = [];
+
   setup() {}
 
   prepareRender() {
@@ -1078,7 +1080,9 @@ test('missing inline details retain summaries without fetching a full record', a
   view.getModelFactory = () => { throw new Error('No record request allowed'); };
   const event = tooltipEvent();
   assert.equal(await view.eventTooltip.loadDetails(event), null);
-  assert.equal(view.eventTooltip.detailsFor(event).rows.find((row) => row.label === 'Calendar users').value, 'Ann');
+  const summary = view.eventTooltip.detailsFor(event);
+
+  assert.equal(summary.rows.some((row) => row.label === 'Calendar users'), false);
 });
 
 test('unmounting an event closes its tooltip and prevents late detail responses from reopening it', async () => {
@@ -2255,4 +2259,86 @@ test('custom calendar dates remain authoritative for tooltip times', async () =>
 
   assert.equal(end.value, '2026-11-05 11:30:00');
   assert.equal(summary.title, 'Scheduled session');
+});
+
+
+test('events with only an assignee omit calendar membership and empty attendee rows', () => {
+  const { view } = fixture('basicWeek');
+
+  view.sharedUsers = [
+    { id: 'ann', name: 'Ann' },
+    { id: 'bob', name: 'Bob' },
+  ];
+
+  for (const scope of ['Meeting', 'Call', 'Session']) {
+    const event = tooltipEvent(scope);
+
+    event.extendedProps.calendarUserIds = ['ann', 'bob'];
+    event.extendedProps.assignedUserName = 'Ann';
+
+    for (const details of [null, { assignedUserName: 'Ann' }, {
+      assignedUserName: 'Ann',
+      usersNames: {},
+      contactsNames: {},
+      leadsNames: {},
+    }]) {
+      const summary = view.eventTooltip.detailsFor(event, details);
+
+      assert.equal(summary.rows.find((row) => row.label === 'assignedUser').value, 'Ann');
+      assert.equal(summary.rows.some((row) =>
+        ['Calendar users', 'Attendees', 'users'].includes(row.label)), false);
+    }
+  }
+});
+
+
+test('native Espo event conversion preserves attendee details for grid tooltips', async () => {
+  const source = readFileSync(new URL(
+    '../../site/client/modules/crm/src/views/calendar/calendar.js', import.meta.url,
+  ), 'utf8');
+  const start = source.indexOf('    convertToFcEvent(o) {');
+  const end = source.indexOf('\n    /**', start);
+  const convert = vm.runInNewContext(`({${source.slice(start, end)}}).convertToFcEvent`);
+  const { view } = fixture('basicWeek');
+  const details = {
+    assignedUserName: 'Ann',
+    usersNames: { ann: 'Ann', outsider: 'Outside participant' },
+    usersColumns: { outsider: { status: 'Accepted' } },
+  };
+
+  view.handleAllDay = () => {};
+  view.fillColor = () => {};
+  view.handleStatus = () => {};
+
+  const converted = convert.call(view, {
+    id: 'details',
+    scope: 'Meeting',
+    name: 'Planning',
+    calendarPlusDetails: details,
+  });
+  const event = {
+    id: converted.id,
+    title: converted.title,
+    extendedProps: converted,
+  };
+  const loaded = await view.eventTooltip.loadDetails(event);
+  const summary = view.eventTooltip.detailsFor(event, loaded);
+
+  assert.equal(converted.calendarPlusDetails, details);
+  assert.equal(summary.rows.find((row) => row.label === 'assignedUser').value, 'Ann');
+  assert.equal(summary.rows.find((row) => row.label === 'Attendees').value, 'Ann ?, Outside participant ✓');
+});
+
+
+test('personal-calendar record changes reload the complete attendee projection', () => {
+  const { view } = fixture('basicWeek');
+
+  view.isCustomView = false;
+  view.mode = 'agendaWeek';
+
+  view.addModel({ entityType: 'Meeting', id: 'details' });
+  view.updateModel({ entityType: 'Meeting', id: 'details' });
+  view.removeModel({ entityType: 'Meeting', id: 'details' });
+
+  assert.equal(view.refreshes, 3);
 });

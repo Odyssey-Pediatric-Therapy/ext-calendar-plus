@@ -332,27 +332,25 @@ define('calendar-plus:views/calendar/event-tooltip', ['calendar-plus:calendar-de
           add(view.translate('collaborators', 'fields', scope), collaborators.join(', '));
         } else if (details && attendeeFields.some((name) => details[name] !== undefined)) {
           const participants = this.attendeesFor(scope, details);
-          const label = ['Meeting', 'Call'].includes(scope)
-            ? view.translate('Attendees', 'labels', 'Calendar')
-            : view.translate('users', 'fields', scope);
-          const value = participants
-            .map((person) => [person.name, person.indicator].filter(Boolean).join(' '))
-            .join(', ');
 
-          add(
-            label,
-            value || view.translate('None'),
-            participants.some((person) => person.indicator) ? { participants } : {},
-          );
-        } else {
-          const people = (source.calendarUserIds || [])
-            .map(
-              (id) =>
-                (view.sharedUsers || view.userList || []).find((user) => user.id === id)?.name,
-            )
-            .filter(Boolean);
+          if (participants.length) {
+            let label = view.translate('users', 'fields', scope);
 
-          add(view.translate('Calendar users', 'labels', 'Calendar'), people.join(', '));
+            if (['Meeting', 'Call'].includes(scope)) {
+              label = view.translate('Attendees', 'labels', 'Calendar');
+            }
+
+            const value = participants
+              .map((person) => [person.name, person.indicator].filter(Boolean).join(' '))
+              .join(', ');
+            const extra = {};
+
+            if (participants.some((person) => person.indicator)) {
+              extra.participants = participants;
+            }
+
+            add(label, value, extra);
+          }
         }
       }
 

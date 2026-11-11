@@ -191,6 +191,7 @@ define('calendar-plus:views/calendar/calendar', [
         this.allDayScopeList = this.allDayScopeList.filter((scope) => scope !== 'Task');
       }
 
+      this.eventAttributes = [...this.eventAttributes, 'calendarPlusDetails'];
       this.extendedProps = [...this.extendedProps, 'calendarUserIds', 'visibleCalendarUserIds', 'calendarPlusDetails'];
 
       const hidden =
@@ -1621,31 +1622,19 @@ define('calendar-plus:views/calendar/calendar', [
     addModel(model) {
       this.eventTooltip.refresh();
 
-      if (this.isSharedTimeGrid()) {
-        return this.actionRefresh();
-      }
-
-      return super.addModel(model);
+      return this.actionRefresh();
     }
 
     updateModel(model) {
       this.eventTooltip.refresh();
 
-      if (this.isSharedTimeGrid()) {
-        return this.actionRefresh();
-      }
-
-      return super.updateModel(model);
+      return this.actionRefresh();
     }
 
     removeModel(model) {
       this.eventTooltip.refresh();
 
-      if (this.isSharedTimeGrid()) {
-        return this.actionRefresh();
-      }
-
-      return super.removeModel(model);
+      return this.actionRefresh();
     }
   };
 });
