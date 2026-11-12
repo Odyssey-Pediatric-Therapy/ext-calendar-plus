@@ -1,7 +1,7 @@
 {
     "name": "espocrm/ext-calendar-plus",
     "require": {
-        "php": ">=8.3"
+        "php": ">=8.5"
     },
     "autoload-dev": {
         "psr-4": {
